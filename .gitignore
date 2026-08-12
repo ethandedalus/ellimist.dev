@@ -1,0 +1,15 @@
+dist/
+.astro/
+
+node_modules/
+
+pnpm-debug.log*
+
+.env
+.env.production
+
+.DS_Store
+
+tmp/
+
+src/content/blog/test-capabilities.mdx

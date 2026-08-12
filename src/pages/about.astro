@@ -1,0 +1,43 @@
+---
+import { SITE_TITLE } from "~/consts";
+import BaseLayout from "~/layouts/BaseLayout.astro";
+---
+
+<BaseLayout
+  title={`About · ${SITE_TITLE}`}
+  description="Ethan Dedalus. Haskell, Rust, and compilers."
+>
+  <div class="mx-auto w-full max-w-2xl px-4 py-16 sm:px-6">
+    <h1 class="text-foreground text-3xl font-bold tracking-tight sm:text-4xl">
+      About
+    </h1>
+
+    <div class="prose prose-neutral dark:prose-invert mt-6 max-w-none">
+      <p>
+        Hi, I'm Ethan. I'm a software engineer. Welcome to my corner of the
+        internet. I work on Go microservices at work, and compilers and
+        audio/video related stuff in my spare time. I mostly write about
+        software engineering and other things I find interesting.
+      </p>
+
+      <p>
+        This site is split in two. <a href="/blog">Blog</a> holds the long-form pieces,
+        and <a href="/notes">Notes</a> is for everything shorter: a thing I worked
+        out, a footgun I hit, a paragraph I'd otherwise lose.
+      </p>
+
+      <p>
+        You can find me on <a
+          href="https://github.com/ethandedalus"
+          target="_blank"
+          rel="noreferrer">GitHub</a
+        >, or subscribe via <a href="/rss.xml">RSS</a>. If you want, you can
+        also <a
+          href="mailto:ethandedalus@gmail.com"
+          rel="noreferrer"
+          target="_blank">email me</a
+        >.
+      </p>
+    </div>
+  </div>
+</BaseLayout>

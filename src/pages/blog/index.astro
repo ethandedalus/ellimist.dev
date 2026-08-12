@@ -1,0 +1,93 @@
+---
+import BlogSearch from "~/components/BlogSearch.svelte";
+import FormattedDate from "~/components/FormattedDate.astro";
+import { BLOG_PAGE_SIZE, SITE_TITLE } from "~/consts";
+import BaseLayout from "~/layouts/BaseLayout.astro";
+import { getSearchIndexVersion } from "~/lib/search-index";
+import { getTaggedItems, tagSlug } from "~/lib/tags";
+
+const items = await getTaggedItems();
+const version = await getSearchIndexVersion();
+---
+
+<BaseLayout
+  title={`Blog · ${SITE_TITLE}`}
+  description="Search posts and notes by full text or tag."
+>
+  <div class="mx-auto w-full max-w-2xl px-4 py-10 sm:px-6">
+    <header class="mb-8">
+      <h1 class="text-foreground text-3xl font-bold tracking-tight sm:text-4xl">
+        Posts
+      </h1>
+      <p class="text-muted-foreground mt-2 text-lg">Everything I've written.</p>
+    </header>
+
+    <BlogSearch client:load {version} pageSize={BLOG_PAGE_SIZE} />
+
+    {
+      /*
+      Server-rendered so the page has real content with no JavaScript, and so
+      crawlers see the archive. The island hides this once a search is active.
+    */
+    }
+    <div id="blog-listing" class="mt-8">
+      <ul class="divide-border flex flex-col divide-y">
+        {
+          items.map((item) => (
+            <li class="py-4">
+              <a href={item.href} class="group flex flex-col gap-1">
+                <span class="flex items-center gap-2">
+                  <span
+                    class:list={[
+                      "chip-kind",
+                      item.kind === "blog"
+                        ? "chip-kind-post"
+                        : "chip-kind-note",
+                    ]}
+                  >
+                    {item.kind === "blog" ? "post" : "note"}
+                  </span>
+                  <span class="text-muted-foreground font-mono text-xs tabular-nums">
+                    <FormattedDate date={new Date(item.pubDate)} />
+                  </span>
+                  {item.series && (
+                    <span class="chip-series">
+                      <span class="series-name">{item.series}</span>
+                      {item.seriesPart && (
+                        <span class="series-part">Part {item.seriesPart}</span>
+                      )}
+                    </span>
+                  )}
+                </span>
+                <span class="text-foreground group-hover:text-primary font-medium transition-colors">
+                  {item.title}
+                </span>
+                {item.description && (
+                  <span class="text-muted-foreground text-sm text-pretty">
+                    {item.description}
+                  </span>
+                )}
+              </a>
+
+              {/* Outside the anchor above — a link inside a link is invalid HTML. */}
+              {item.tags.length > 0 && (
+                <ul class="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+                  {item.tags.map((tag) => (
+                    <li>
+                      <a
+                        href={`/blog?tag=${tagSlug(tag)}`}
+                        class="tag-link"
+                      >
+                        #{tag}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </li>
+          ))
+        }
+      </ul>
+    </div>
+  </div>
+</BaseLayout>

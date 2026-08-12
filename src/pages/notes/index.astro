@@ -1,0 +1,54 @@
+---
+import { getCollection } from "astro:content";
+import FormattedDate from "~/components/FormattedDate.astro";
+import { SITE_TITLE } from "~/consts";
+import BaseLayout from "~/layouts/BaseLayout.astro";
+
+const notes = (await getCollection("notes", ({ data }) => !data.draft)).sort(
+  (a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf(),
+);
+---
+
+<BaseLayout title={`Notes · ${SITE_TITLE}`} description="Short, one-off notes.">
+  <div class="mx-auto w-full max-w-2xl px-4 py-10 sm:px-6">
+    <header class="mb-10">
+      <h1 class="text-foreground text-3xl font-bold tracking-tight sm:text-4xl">
+        Notes
+      </h1>
+      <p class="text-muted-foreground mt-2 text-lg">
+        Thoughts that flutter in and out of my minds eye.
+      </p>
+    </header>
+
+    {
+      notes.length === 0 ? (
+        <p class="text-muted-foreground">No notes yet.</p>
+      ) : (
+        <ul class="divide-border flex flex-col divide-y">
+          {notes.map((note) => (
+            <li>
+              <a
+                href={`/notes/${note.id}/`}
+                class="group flex flex-col gap-1 py-4 sm:flex-row sm:items-baseline sm:gap-4"
+              >
+                <span class="text-muted-foreground shrink-0 font-mono text-xs tabular-nums sm:w-24">
+                  <FormattedDate date={note.data.pubDate} />
+                </span>
+                <span class="flex-1">
+                  <span class="text-foreground group-hover:text-primary font-medium transition-colors">
+                    {note.data.title}
+                  </span>
+                  {note.data.description && (
+                    <span class="text-muted-foreground block text-sm text-pretty">
+                      {note.data.description}
+                    </span>
+                  )}
+                </span>
+              </a>
+            </li>
+          ))}
+        </ul>
+      )
+    }
+  </div>
+</BaseLayout>

@@ -1,0 +1,420 @@
+@import 'tailwindcss';
+@plugin '@tailwindcss/typography';
+
+/* Class-based dark mode, driven by the `.dark` class on <html>. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* shadcn-svelte design tokens. */
+:root {
+	--radius: 0.625rem;
+
+	--background: #f9f9f9;
+	/* The exact inverse of the dark background, so the two modes are a matched
+	   pair. Was oklch(0.145 0 0) ≈ #252525, which read washed out. */
+	--foreground: #121214;
+	--card: #ffffff;
+	--card-foreground: oklch(0.145 0 0);
+	--popover: #ffffff;
+	--popover-foreground: oklch(0.145 0 0);
+	/*
+	 * Two accents that swap roles between modes: pink leads in light, teal
+	 * leads in dark. Each has a `-chip` variant, darker because chip text sits
+	 * on a 10% tint of itself rather than on the page background, which costs
+	 * roughly a point of contrast.
+	 *
+	 * Chroma is capped at what sRGB can actually reach at these lightnesses —
+	 * higher values just get clipped by the browser.
+	 */
+	--accent-pink: oklch(0.58 0.23 15); /* #e1064c — 4.60:1 on #f9f9f9 */
+	--accent-teal: oklch(0.52 0.085 195); /* #117878 — 5.01:1 */
+	--accent-pink-chip: oklch(0.5 0.2 15); /* #b9003d — 5.31:1 on its tint */
+	--accent-teal-chip: oklch(0.48 0.08 195); /* #086b6c — 5.19:1 on its tint */
+
+	--primary: var(--accent-pink);
+	--primary-foreground: oklch(0.985 0 0);
+
+	/* Post/note chips take the opposite accent from --primary in each mode. */
+	--chip-post: var(--accent-pink-chip);
+	--chip-note: var(--accent-teal-chip);
+	--secondary: oklch(0.97 0 0);
+	--secondary-foreground: oklch(0.205 0 0);
+	--muted: oklch(0.97 0 0);
+	--muted-foreground: oklch(0.556 0 0);
+	--accent: oklch(0.97 0 0);
+	--accent-foreground: oklch(0.205 0 0);
+	--destructive: oklch(0.577 0.245 27.325);
+	--destructive-foreground: oklch(0.985 0 0);
+	--border: oklch(0.922 0 0);
+	--input: oklch(0.922 0 0);
+	--ring: oklch(0.708 0 0);
+
+}
+
+.dark {
+	--background: #121214;
+	--foreground: oklch(0.985 0 0);
+	--card: #1a1a1d;
+	--card-foreground: oklch(0.985 0 0);
+	--popover: #1a1a1d;
+	--popover-foreground: oklch(0.985 0 0);
+	/*
+	 * Same two accents, lifted for the dark background — and swapped: teal
+	 * leads here, pink takes the chips. Both clear 4.5:1 on their tints
+	 * without needing separate `-chip` values, so those alias the base.
+	 */
+	--accent-pink: oklch(0.72 0.19 15); /* #ff687e — 6.7:1 on #121214 */
+	--accent-teal: oklch(0.78 0.12 195); /* #3bcfcf — 9.8:1 */
+	--accent-pink-chip: var(--accent-pink); /* 5.58:1 on its tint */
+	--accent-teal-chip: var(--accent-teal); /* 7.94:1 on its tint */
+
+	--primary: var(--accent-teal);
+	--primary-foreground: oklch(0.19 0.02 195);
+
+	--chip-post: var(--accent-teal-chip);
+	--chip-note: var(--accent-pink-chip);
+	--secondary: oklch(0.269 0 0);
+	--secondary-foreground: oklch(0.985 0 0);
+	--muted: oklch(0.269 0 0);
+	--muted-foreground: oklch(0.708 0 0);
+	--accent: oklch(0.269 0 0);
+	--accent-foreground: oklch(0.985 0 0);
+	--destructive: oklch(0.704 0.191 22.216);
+	--destructive-foreground: oklch(0.985 0 0);
+	--border: oklch(1 0 0 / 12%);
+	--input: oklch(1 0 0 / 15%);
+	--ring: oklch(0.556 0 0);
+
+}
+
+@theme inline {
+	--color-background: var(--background);
+	--color-foreground: var(--foreground);
+	--color-card: var(--card);
+	--color-card-foreground: var(--card-foreground);
+	--color-popover: var(--popover);
+	--color-popover-foreground: var(--popover-foreground);
+	--color-primary: var(--primary);
+	--color-primary-foreground: var(--primary-foreground);
+	--color-secondary: var(--secondary);
+	--color-secondary-foreground: var(--secondary-foreground);
+	--color-muted: var(--muted);
+	--color-muted-foreground: var(--muted-foreground);
+	--color-accent: var(--accent);
+	--color-accent-foreground: var(--accent-foreground);
+	--color-destructive: var(--destructive);
+	--color-destructive-foreground: var(--destructive-foreground);
+	--color-border: var(--border);
+	--color-input: var(--input);
+	--color-ring: var(--ring);
+	--color-chip-post: var(--chip-post);
+	--color-chip-note: var(--chip-note);
+	--color-accent-pink: var(--accent-pink);
+	--color-accent-teal: var(--accent-teal);
+
+	--radius-sm: calc(var(--radius) - 4px);
+	--radius-md: calc(var(--radius) - 2px);
+	--radius-lg: var(--radius);
+	--radius-xl: calc(var(--radius) + 4px);
+
+	--font-sans: var(--font-catamaran), ui-sans-serif, system-ui, sans-serif;
+	--font-serif: var(--font-newsreader), ui-serif, Georgia, serif;
+	--font-mono: var(--font-jetbrains-mono), ui-monospace, SFMono-Regular,
+		monospace;
+
+	/* Used by WASM.astro's fullscreen button overlay. */
+	--color-midnight: oklch(0.19 0.02 265);
+	--color-offwhite: oklch(0.98 0.003 265);
+}
+
+@layer base {
+	*,
+	::after,
+	::before {
+		border-color: var(--color-border);
+	}
+
+	html {
+		scroll-behavior: smooth;
+	}
+
+	body {
+		background-color: var(--color-background);
+		color: var(--color-foreground);
+		font-family: var(--font-sans);
+		-webkit-font-smoothing: antialiased;
+	}
+
+	/*
+	 * Tailwind v4's preflight sets `cursor: default` on buttons, unlike v3.
+	 * Restore the pointer for anything actually clickable, in one place rather
+	 * than per component. `summary` covers Expressive Code's collapsible
+	 * sections.
+	 */
+	button:not(:disabled),
+	[role='button']:not(:disabled),
+	[role='switch']:not(:disabled),
+	[role='option']:not(:disabled),
+	label[for],
+	summary {
+		cursor: pointer;
+	}
+
+	button:disabled,
+	[role='button'][aria-disabled='true'] {
+		cursor: not-allowed;
+	}
+
+	::selection {
+		background-color: color-mix(in oklab, var(--color-primary) 25%, transparent);
+	}
+
+	:focus-visible {
+		outline: 2px solid var(--color-primary);
+		outline-offset: 2px;
+	}
+}
+
+/* ---------------------------------------------------------------------------
+   Kind chips (POST / NOTE)
+
+   One class, two hues. The background is mixed from the same token as the
+   text, so a hue change only ever needs editing in one place.
+   ------------------------------------------------------------------------- */
+
+.chip-kind {
+	display: inline-block;
+	border-radius: var(--radius-sm);
+	padding: 0.125rem 0.375rem;
+	font-family: var(--font-mono);
+	font-size: 10px;
+	font-weight: 600;
+	line-height: 1.4;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+}
+
+.chip-kind-post {
+	color: var(--color-chip-post);
+	background-color: color-mix(in oklab, var(--color-chip-post) 10%, transparent);
+}
+
+.chip-kind-note {
+	color: var(--color-chip-note);
+	background-color: color-mix(in oklab, var(--color-chip-note) 10%, transparent);
+}
+
+/* ---------------------------------------------------------------------------
+   Tag links
+
+   One class for every `#tag`, wherever it renders — post headers, note
+   headers, the archive listing, and the live search results. The search
+   results use buttons that toggle a filter, so the selected state is keyed
+   off `aria-pressed` rather than a separate class.
+   ------------------------------------------------------------------------- */
+
+.tag-link {
+	color: var(--color-muted-foreground);
+	font-size: 0.875rem;
+	font-weight: 500;
+	line-height: 1.4;
+	transition: color 150ms;
+}
+
+.tag-link:hover,
+.tag-link[aria-pressed='true'] {
+	color: var(--color-primary);
+}
+
+/* ---------------------------------------------------------------------------
+   Series chip
+
+   The series and its part number are one chip, not two: "Part 2" carries no
+   meaning without the series it belongs to. Neutral by design — POST/NOTE
+   already spend the two accent hues, and this sits next to them.
+   ------------------------------------------------------------------------- */
+
+.chip-series {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.375rem;
+	max-width: 100%;
+	border: 1px solid var(--color-border);
+	border-radius: var(--radius-sm);
+	background-color: var(--color-muted);
+	padding: 0.125rem 0.4rem;
+	color: var(--color-muted-foreground);
+	font-size: 11px;
+	font-weight: 500;
+	line-height: 1.5;
+}
+
+.chip-series > .series-name {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.chip-series > .series-part {
+	flex-shrink: 0;
+	border-left: 1px solid var(--color-border);
+	padding-left: 0.375rem;
+	font-family: var(--font-mono);
+	font-size: 10px;
+	font-variant-numeric: tabular-nums;
+	opacity: 0.75;
+}
+
+/* Only the standalone chip on a post page is a link. */
+a.chip-series {
+	transition:
+		color 150ms,
+		border-color 150ms;
+}
+
+a.chip-series:hover {
+	border-color: var(--color-primary);
+	color: var(--color-primary);
+}
+
+/* ---------------------------------------------------------------------------
+   Theme switch
+
+   Driven off the `.dark` class rather than component state, so the
+   server-rendered switch is already in the right position at first paint.
+   Hydration only attaches the click handler.
+   ------------------------------------------------------------------------- */
+
+/*
+ * Track is `w-9` (36px) with a 1px border, so its content box is 34px wide and
+ * 18px tall. The thumb is `size-4` (16px), which leaves 1px above and below it
+ * once centred — so a 1px inset left and right matches that vertically.
+ *
+ *   travel = 34 (track) - 16 (thumb) - 1 (left inset) - 1 (right inset) = 16px
+ *
+ * The previous `translateX(calc(100% - 2px))` resolved 100% against the
+ * *thumb's* width, not the track's, so it only moved 14px and stopped 4px
+ * short of the right edge while sitting flush on the left.
+ */
+/* Pink when off (light mode), teal when on — two accents rather than a grey
+   track, so the control carries some colour in an otherwise monochrome bar. */
+.theme-switch {
+	background-color: var(--color-primary);
+}
+
+.theme-switch-thumb {
+	transform: translateX(1px);
+}
+
+:root.dark .theme-switch-thumb {
+	transform: translateX(17px);
+}
+
+/* ---------------------------------------------------------------------------
+   Prose
+   ------------------------------------------------------------------------- */
+
+.prose {
+	/*
+	 * Serif for article body copy. Headings stay sans so they match the post
+	 * title, which is rendered outside `.prose` by the layout.
+	 */
+	font-family: var(--font-serif);
+
+	--tw-prose-body: var(--color-foreground);
+	--tw-prose-headings: var(--color-foreground);
+	--tw-prose-lead: var(--color-muted-foreground);
+	--tw-prose-links: var(--color-primary);
+	--tw-prose-bold: var(--color-foreground);
+	--tw-prose-counters: var(--color-muted-foreground);
+	--tw-prose-bullets: var(--color-border);
+	--tw-prose-hr: var(--color-border);
+	--tw-prose-quotes: var(--color-foreground);
+	--tw-prose-quote-borders: var(--color-border);
+	--tw-prose-captions: var(--color-muted-foreground);
+	--tw-prose-code: var(--color-foreground);
+	--tw-prose-th-borders: var(--color-border);
+	--tw-prose-td-borders: var(--color-border);
+}
+
+/*
+ * Serif reads smaller than sans at the same pixel size, so body copy gets a
+ * bump. Applies to posts and notes alike — nothing uses `prose-sm`.
+ */
+.prose {
+	font-size: 1.0625rem;
+	line-height: 1.75;
+}
+
+.prose :is(h1, h2, h3, h4, h5, h6) {
+	font-family: var(--font-sans);
+}
+
+/* Keep everything code-shaped on the monospace family, inside prose or not. */
+.prose :is(code, kbd, samp, pre),
+.prose .expressive-code :is(code, pre) {
+	font-family: var(--font-mono);
+}
+
+/* Inline code — block code is handled by Expressive Code below. */
+.prose :not(pre) > code {
+	background-color: var(--color-muted);
+	border: 1px solid var(--color-border);
+	border-radius: var(--radius-sm);
+	padding: 0.125rem 0.35rem;
+	font-family: var(--font-mono);
+	font-size: 0.875em;
+	font-weight: 500;
+}
+
+.prose :not(pre) > code::before,
+.prose :not(pre) > code::after {
+	content: none;
+}
+
+/* ---------------------------------------------------------------------------
+   Expressive Code
+   Prose must not restyle these — Expressive Code ships its own themes, which
+   are bound to `.dark` in astro.config.mjs.
+   ------------------------------------------------------------------------- */
+
+.prose .expressive-code {
+	margin-block: 1.5rem;
+}
+
+.prose .expressive-code pre {
+	background-color: unset;
+	color: unset;
+	padding: unset;
+	margin: unset;
+	border-radius: unset;
+	font-size: unset;
+	line-height: unset;
+}
+
+.prose .expressive-code code {
+	background-color: unset;
+	border: none;
+	padding: unset;
+	font-weight: inherit;
+	font-size: inherit;
+}
+
+.prose .expressive-code code::before,
+.prose .expressive-code code::after {
+	content: none;
+}
+
+/* ---------------------------------------------------------------------------
+   KaTeX
+   ------------------------------------------------------------------------- */
+
+/* Long display equations should scroll rather than overflow the column. */
+.katex-display {
+	overflow-x: auto;
+	overflow-y: hidden;
+	padding-block: 0.5rem;
+}
+
+.katex {
+	color: var(--color-foreground);
+}

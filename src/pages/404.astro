@@ -1,0 +1,49 @@
+---
+import Logo from "~/components/Logo.astro";
+import { SITE_TITLE } from "~/consts";
+import BaseLayout from "~/layouts/BaseLayout.astro";
+---
+
+<BaseLayout
+  title={`Not found · ${SITE_TITLE}`}
+  description="That page doesn't exist."
+>
+  <div class="mx-auto w-full max-w-2xl px-4 pt-32 pb-24 sm:px-6">
+    <Logo size={48} class="text-muted-foreground mb-8" />
+
+    <p class="text-muted-foreground font-mono text-sm tracking-wide">404</p>
+
+    <h1
+      class="text-foreground mt-2 text-3xl font-bold tracking-tight text-balance sm:text-4xl"
+    >
+      That page doesn't exist
+    </h1>
+
+    <p class="text-muted-foreground mt-4 text-lg text-pretty">
+      The link may be broken, or the page may have moved. Try searching from the
+      bar above, or start from one of these.
+    </p>
+
+    {/*
+      Bordered rather than plain text: four same-coloured links separated only
+      by a gap read as one run-on phrase.
+    */}
+    <nav aria-label="Site sections" class="mt-8 flex flex-wrap gap-2">
+      {
+        [
+          { href: "/", label: "Home" },
+          { href: "/blog", label: "Blog" },
+          { href: "/notes", label: "Notes" },
+          { href: "/about", label: "About" },
+        ].map(({ href, label }) => (
+          <a
+            {href}
+            class="border-border bg-muted text-muted-foreground hover:border-primary hover:text-primary rounded-md border px-3 py-1.5 text-sm font-medium transition-colors"
+          >
+            {label}
+          </a>
+        ))
+      }
+    </nav>
+  </div>
+</BaseLayout>

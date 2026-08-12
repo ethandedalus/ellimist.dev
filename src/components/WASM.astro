@@ -1,0 +1,134 @@
+---
+import { Maximize } from "@lucide/svelte";
+import { Skeleton } from "~/lib/components/ui/skeleton";
+
+interface Props {
+  src: string;
+  caption: string;
+  link?: string;
+}
+
+const { src, caption, link } = Astro.props;
+---
+
+<div class="flex overflow-hidden relative flex-col gap-2 items-center my-8">
+  <div
+    id="wasm-controls"
+    class="absolute z-50 text-xs top-6.25 right-6.25 bg-midnight text-offwhite hidden"
+  >
+    <button
+      class="flex items-center"
+      onclick="Module.requestFullscreen(false, true);"
+      ><Maximize size={30} />
+    </button>
+  </div>
+
+  <div id="wasm-skeleton" class="w-full" aria-live="polite" aria-busy="true">
+    <Skeleton class="aspect-4/3 w-full rounded-md" />
+    <span class="sr-only">Loading {caption}…</span>
+  </div>
+
+  <div
+    id="wasm-error"
+    class="border-border text-muted-foreground hidden w-full rounded-md border border-dashed p-6 text-center text-sm"
+  >
+    Couldn’t load {caption}. Check your connection and reload.
+  </div>
+
+  <canvas
+    class="max-w-full rounded-md emscripten hidden"
+    id="canvas"
+    tabindex="-1"></canvas>
+  <small class="self-start"
+    >{caption}{
+      link ? (
+        <>
+          |
+          <a href={link} about="_blank" rel="noreferrer">
+            Source
+          </a>
+        </>
+      ) : (
+        ""
+      )
+    }</small
+  >
+</div>
+
+<script type="text/javascript" is:inline>
+  var canvasElement = document.getElementById("canvas");
+
+  var skeletonElement = document.getElementById("wasm-skeleton");
+  var errorElement = document.getElementById("wasm-error");
+  var controlsElement = document.getElementById("wasm-controls");
+
+  function showWasmCanvas() {
+    if (skeletonElement) skeletonElement.remove();
+    canvasElement.classList.remove("hidden");
+    if (controlsElement) controlsElement.classList.remove("hidden");
+  }
+
+  function showWasmError() {
+    if (skeletonElement) skeletonElement.remove();
+    if (errorElement) errorElement.classList.remove("hidden");
+  }
+
+  var Module = {
+    canvas: canvasElement,
+
+    onRuntimeInitialized: function () {
+      showWasmCanvas();
+    },
+
+    onAbort: function () {
+      showWasmError();
+    },
+  };
+
+  canvasElement.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+  });
+
+  document.addEventListener("fullscreenchange", () => {
+    if (document.fullscreenElement) {
+      Module.canvas.style.cursor = "default";
+    }
+  });
+
+  const isFullyVisible = (el) => {
+    const rect = el.getBoundingClientRect();
+    return (
+      rect.top >= 0 &&
+      rect.left >= 0 &&
+      rect.bottom <=
+        (window.innerHeight || document.documentElement.clientHeight) &&
+      rect.right <= (window.innerWidth || document.documentElement.clientWidth)
+    );
+  };
+
+  window.addEventListener("keydown", (e) => {
+    const canvas = document.getElementById("canvas");
+    switch (e.code) {
+      case "ArrowUp":
+      case "ArrowDown":
+      case "ArrowLeft":
+      case "ArrowRight":
+        if (isFullyVisible(canvas)) {
+          e.preventDefault();
+        }
+        break;
+
+      case "Space":
+        e.preventDefault();
+      default:
+        break; // do not block other keys
+    }
+  });
+</script>
+
+<script
+  async
+  type="text/javascript"
+  src={src}
+  onerror="showWasmError()"
+  is:inline></script>

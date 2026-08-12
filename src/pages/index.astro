@@ -1,0 +1,154 @@
+---
+import { getCollection } from "astro:content";
+import FormattedDate from "~/components/FormattedDate.astro";
+import {
+  HOME_SECTION_MAX,
+  HOME_SECTION_SIZE,
+  SITE_DESCRIPTION,
+  SITE_TITLE,
+} from "~/consts";
+import BaseLayout from "~/layouts/BaseLayout.astro";
+
+// Renders up to HOME_SECTION_MAX entries but only shows HOME_SECTION_SIZE.
+// "See more" reveals the rest in batches — the markup is already on the page,
+// so there's no fetch and it works the moment the button is clickable.
+const posts = (await getCollection("blog", ({ data }) => !data.draft))
+  .sort((a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf())
+  .slice(0, HOME_SECTION_MAX);
+
+const notes = (await getCollection("notes", ({ data }) => !data.draft))
+  .sort((a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf())
+  .slice(0, HOME_SECTION_MAX);
+---
+
+<BaseLayout title={SITE_TITLE} description={SITE_DESCRIPTION}>
+  <div class="mx-auto w-full max-w-3xl px-4 py-16 sm:px-6">
+    <section class="mt-2">
+      <div class="mb-6 flex items-baseline justify-between">
+        <h2 class="text-foreground text-xl font-semibold tracking-tight">
+          Writing
+        </h2>
+        <a
+          href="/blog"
+          class="text-muted-foreground hover:text-primary text-sm transition-colors"
+        >
+          All posts &rarr;
+        </a>
+      </div>
+
+      {
+        posts.length === 0 ? (
+          <p class="text-muted-foreground text-sm">No posts yet.</p>
+        ) : (
+          <ul id="home-posts" class="divide-border flex flex-col divide-y">
+            {posts.map((post, i) => (
+              <li hidden={i >= HOME_SECTION_SIZE}>
+                <a href={`/blog/${post.id}/`} class="group block py-4">
+                  <p class="text-muted-foreground text-sm">
+                    <FormattedDate date={post.data.pubDate} />
+                  </p>
+                  <h3 class="text-foreground group-hover:text-primary mt-1 font-medium transition-colors">
+                    {post.data.title}
+                  </h3>
+                  <p class="text-muted-foreground mt-1 text-sm text-pretty">
+                    {post.data.description}
+                  </p>
+                </a>
+              </li>
+            ))}
+          </ul>
+        )
+      }
+
+      {
+        posts.length > HOME_SECTION_SIZE && (
+          <button
+            type="button"
+            data-see-more="home-posts"
+            data-step={HOME_SECTION_SIZE}
+            class="border-border text-muted-foreground hover:border-primary hover:text-primary mt-6 w-full rounded-md border border-dashed py-2 text-sm font-medium transition-colors"
+          >
+            See more
+          </button>
+        )
+      }
+    </section>
+
+    <section class="mt-16">
+      <div class="mb-6 flex items-baseline justify-between">
+        <h2 class="text-foreground text-xl font-semibold tracking-tight">
+          Notes
+        </h2>
+        <a
+          href="/notes"
+          class="text-muted-foreground hover:text-primary text-sm transition-colors"
+        >
+          All notes &rarr;
+        </a>
+      </div>
+
+      {
+        notes.length === 0 ? (
+          <p class="text-muted-foreground text-sm">No notes yet.</p>
+        ) : (
+          <ul id="home-notes" class="divide-border flex flex-col divide-y">
+            {notes.map((note, i) => (
+              <li hidden={i >= HOME_SECTION_SIZE}>
+                <a
+                  href={`/notes/${note.id}/`}
+                  class="group flex items-baseline gap-4 py-3"
+                >
+                  <span class="text-muted-foreground shrink-0 font-mono text-xs tabular-nums">
+                    <FormattedDate date={note.data.pubDate} />
+                  </span>
+                  <span class="text-foreground group-hover:text-primary text-sm font-medium transition-colors">
+                    {note.data.title}
+                  </span>
+                </a>
+              </li>
+            ))}
+          </ul>
+        )
+      }
+
+      {
+        notes.length > HOME_SECTION_SIZE && (
+          <button
+            type="button"
+            data-see-more="home-notes"
+            data-step={HOME_SECTION_SIZE}
+            class="border-border text-muted-foreground hover:border-primary hover:text-primary mt-6 w-full rounded-md border border-dashed py-2 text-sm font-medium transition-colors"
+          >
+            See more
+          </button>
+        )
+      }
+    </section>
+  </div>
+</BaseLayout>
+
+{
+  /*
+  Reveals already-rendered entries in batches. Inline and framework-free —
+  a hydrated island here would mean shipping every entry twice, once as
+  markup and again as serialized props.
+*/
+}
+<script is:inline>
+  document.querySelectorAll("[data-see-more]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const list = document.getElementById(button.dataset.seeMore);
+      if (!list) return;
+
+      const step = Number(button.dataset.step) || 5;
+      const hidden = Array.from(list.children).filter((li) => li.hidden);
+
+      hidden.slice(0, step).forEach((li) => {
+        li.hidden = false;
+      });
+
+      // Nothing left to reveal after this batch.
+      if (hidden.length <= step) button.hidden = true;
+    });
+  });
+</script>

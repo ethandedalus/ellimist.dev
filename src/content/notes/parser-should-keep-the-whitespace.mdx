@@ -1,0 +1,18 @@
+---
+title: "Why Your Parser Should Keep the Whitespace"
+description: "Lossless syntax trees cost a little memory and unlock every tool you will want later."
+pubDate: "Jul 02 2026"
+tags:
+  - compilers
+  - parsing
+  - tooling
+---
+
+A compiler can throw away whitespace, but a formatter, linter autofix,
+refactoring tool, static analyzer, and LSP server can't.
+
+Once you've built the second tool on a lossy tree you'll write a second
+parser, and then they'll conflict at an inconvenient time.
+
+If you track the whitespace from the beginning, the tree gets a little bigger, but every 
+downstream tool gets to share a unified frontend.

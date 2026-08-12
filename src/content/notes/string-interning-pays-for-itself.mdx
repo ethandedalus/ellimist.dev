@@ -1,0 +1,15 @@
+---
+title: "String interning pays for itself"
+description: "Identifier comparison becomes an integer compare."
+pubDate: "Apr 06 2026"
+tags:
+  - compilers
+  - performance
+  - rust
+---
+
+Intern every identifier you find at lex time and pass `Symbol(u32)` around instead
+of `String`.
+
+Name resolution then compares integers instead of bytes, symbol tables have `u32` keys, and the AST stops holding thousands of tiny heap allocations.
+It's a relatively cheap win in a compiler front end.

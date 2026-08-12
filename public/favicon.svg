@@ -1,0 +1,13 @@
+<svg width="35" height="35" viewBox="0 0 35 35" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <rect class="plate" width="35" height="35" rx="2" fill="#F9F9F9"/>
+    <circle class="mark" cx="17.5" cy="17.5" r="12.5" fill="#121214"/>
+    <ellipse class="mark" cx="9.5" cy="8.5" rx="4.5" ry="3.5" fill="#121214"/>
+    <ellipse class="mark" cx="25.5" cy="8.5" rx="4.5" ry="3.5" fill="#121214"/>
+    <style>
+        /* Inverted for dark browser chrome so the plate never glows white. */
+        @media (prefers-color-scheme: dark) {
+            .plate { fill: #121214; }
+            .mark { fill: #F9F9F9; }
+        }
+    </style>
+</svg>

@@ -1,0 +1,25 @@
+---
+import type { HTMLAttributes } from "astro/types";
+import { cn } from "~/lib/utils";
+
+type Props = HTMLAttributes<"a">;
+
+const { href, class: className, ...props } = Astro.props;
+
+const pathname = Astro.url.pathname.replace(import.meta.env.BASE_URL, "");
+const subpath = pathname.match(/[^\/]+/g);
+const isActive = href === pathname || href === "/" + (subpath?.[0] || "");
+---
+
+<a
+  href={href}
+  aria-current={isActive ? "page" : undefined}
+  class={cn(
+    "text-muted-foreground hover:text-primary rounded-md px-2 py-1 text-sm font-medium transition-colors",
+    isActive && "text-foreground",
+    className,
+  )}
+  {...props}
+>
+  <slot />
+</a>

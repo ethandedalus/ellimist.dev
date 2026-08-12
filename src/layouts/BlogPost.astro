@@ -1,0 +1,82 @@
+---
+import type { CollectionEntry } from "astro:content";
+import FormattedDate from "~/components/FormattedDate.astro";
+import BaseLayout from "~/layouts/BaseLayout.astro";
+import { tagSlug } from "~/lib/tags";
+
+// Only ever rendered from blog/[...slug].astro with collection data.
+type Props = CollectionEntry<"blog">["data"];
+
+const { title, description, pubDate, updatedDate, tags, series, seriesPart } =
+  Astro.props;
+---
+
+<BaseLayout title={title} description={description}>
+  <article class="mx-auto w-full max-w-3xl px-4 py-10 sm:px-6">
+    <header class="mb-8">
+      <div
+        class="text-muted-foreground flex flex-wrap items-center gap-2 text-sm"
+      >
+        <FormattedDate date={pubDate} />
+        {
+          updatedDate && (
+            <>
+              <span aria-hidden="true">·</span>
+              <span class="italic">
+                Updated <FormattedDate date={updatedDate} />
+              </span>
+            </>
+          )
+        }
+      </div>
+
+      {
+        series && (
+          <a
+            href={`/blog?series=${tagSlug(series)}`}
+            class="chip-series mt-3"
+            aria-label={`View all posts in ${series}`}
+          >
+            <span class="series-name">{series}</span>
+            {seriesPart && <span class="series-part">Part {seriesPart}</span>}
+          </a>
+        )
+      }
+
+      <h1
+        class="text-foreground mt-2 text-3xl font-bold tracking-tight text-balance sm:text-4xl"
+      >
+        {title}
+      </h1>
+
+      {
+        description && (
+          <p class="text-muted-foreground mt-3 text-lg text-pretty">
+            {description}
+          </p>
+        )
+      }
+
+      {
+        tags.length > 0 && (
+          <ul class="mt-4 flex flex-wrap gap-x-3 gap-y-1">
+            {tags.map((tag) => (
+              <li>
+                <a
+                  href={`/blog?tag=${tagSlug(tag)}`}
+                  class="tag-link"
+                >
+                  #{tag}
+                </a>
+              </li>
+            ))}
+          </ul>
+        )
+      }
+    </header>
+
+    <div class="prose prose-neutral dark:prose-invert max-w-none">
+      <slot />
+    </div>
+  </article>
+</BaseLayout>

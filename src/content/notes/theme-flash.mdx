@@ -1,0 +1,20 @@
+---
+title: 'Dark mode without the flash'
+description: 'Why the theme script has to be inline and blocking.'
+pubDate: 'Aug 05 2026'
+tags:
+  - astro
+  - css
+---
+
+To avoid a white flash, toss the following inline script in `BaseHead`.
+
+```astro title="src/BaseHead.astro" 
+<script is:inline>
+	const stored = localStorage.getItem('theme');
+	const dark = stored
+		? stored === 'dark'
+		: window.matchMedia('(prefers-color-scheme: dark)').matches;
+	document.documentElement.classList.toggle('dark', dark);
+</script>
+```

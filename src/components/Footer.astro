@@ -1,0 +1,20 @@
+---
+const today = new Date();
+---
+
+<footer class="border-border mt-16 border-t">
+  <div
+    class="text-muted-foreground mx-auto flex w-full max-w-3xl flex-col gap-2 px-4 py-8 text-sm sm:flex-row sm:items-center sm:justify-between sm:px-6"
+  >
+    <p>&copy; {today.getFullYear()} Ethan Dedalus. All rights reserved.</p>
+    <div class="flex items-center gap-4">
+      <a href="/rss.xml" class="hover:text-primary transition-colors">RSS</a>
+      <a
+        href="https://github.com/ethandedalus"
+        target="_blank"
+        rel="noreferrer"
+        class="hover:text-primary transition-colors">GitHub</a
+      >
+    </div>
+  </div>
+</footer>
