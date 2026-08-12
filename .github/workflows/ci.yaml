@@ -1,0 +1,61 @@
+name: CI 
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# `id-token: write` is what lets the runner mint the OIDC token that Workload
+# Identity Federation exchanges for GCP credentials. Nothing else needs write.
+permissions:
+  contents: read
+  id-token: write
+
+# Two merges in quick succession shouldn't race to publish. The newer run wins.
+concurrency:
+  group: firebase-hosting-live
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Build and deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Reads the pnpm version from `packageManager` in package.json.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # Gate the deploy on types. `astro check` understands .astro and .svelte,
+      # which plain tsc does not.
+      - name: Type-check
+        run: pnpm check
+
+      - name: Build
+        run: pnpm build
+
+      # Writes short-lived credentials to disk and exports
+      # GOOGLE_APPLICATION_CREDENTIALS, which firebase-tools picks up on its own.
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: ellimist
+          workload_identity_provider: ${{ vars.WIF_PROVIDER }}
+          service_account: ${{ vars.WIF_SERVICE_ACCOUNT }}
+
+      - name: Deploy
+        run: >
+          pnpm exec firebase deploy
+          --only hosting
+          --project ellimist
+          --non-interactive
+          --message "${{ github.sha }}"
