@@ -21,6 +21,7 @@
     "@astrojs/sitemap": "^3.7.3",
     "@astrojs/svelte": "^9.0.1",
     "@expressive-code/plugin-collapsible-sections": "^0.44.1",
+    "@expressive-code/plugin-line-numbers": "^0.44.1",
     "@lucide/svelte": "^1.31.0",
     "@tailwindcss/typography": "^0.5.20",
     "@tailwindcss/vite": "^4.3.3",
@@ -48,6 +49,7 @@
     "onlyBuiltDependencies": [
       "esbuild",
       "sharp"
-    ]
+    ],
+    "overrides": {}
   }
 }

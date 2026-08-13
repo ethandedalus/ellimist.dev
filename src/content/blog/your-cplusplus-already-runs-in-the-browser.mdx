@@ -1,0 +1,133 @@
+---
+title: "Your C++ Already Runs in the Browser"
+description: "Packaging your C and C++ apps for the browser with emscripten."
+pubDate: "February 1, 2026"
+tags:
+  - c++
+  - gamedev
+  - raylib
+  - wasm
+---
+
+import WASM from "~/components/WASM.astro";
+
+Check out this Tetris clone.
+
+<WASM
+  src="https://storage.googleapis.com/anishsinha.io/ellimist/minitetris.js"
+  caption="Tetris"
+  link="https://github.com/ethandedalus/minitetris" 
+/> 
+
+Neat, right? It's not JavaScript though, it's a C++ project, using `C++23` and `raylib`, cross compiled to WebAssembly with minimal effort and no code changes. The same app builds natively on MacOS, Windows, and Linux. The only difference is the target. 
+
+The CMakeLists for the project is really not that different from what it would be without the WebAssembly target. Here it is, with the added sections highlighted (uncollapse the lines above/below to see the whole file):
+
+```cmake title="CMakeLists.txt" ins={41-68} collapse={1-40, 69-88}
+cmake_minimum_required(VERSION 4.2.0)
+project(minitetris LANGUAGES C CXX)
+
+if (APPLE)
+    enable_language(OBJC)
+endif ()
+
+set(CMAKE_C_STANDARD 23)
+set(CMAKE_CXX_STANDARD 23)
+
+# Generate compile_commands.json
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+
+# Assets
+set(RESOURCES_DIR "${CMAKE_SOURCE_DIR}/resources")
+set(RESOURCES_OUTPUT_DIR "${CMAKE_BINARY_DIR}/resources")
+
+add_custom_target(copy_resources ALL COMMAND ${CMAKE_COMMAND} -E copy_directory
+                  "${RESOURCES_DIR}" "${RESOURCES_OUTPUT_DIR}" COMMENT
+                  "Copying resources to the build directory...")
+
+# Dependencies
+include(cmake/fetch_raylib.cmake)
+
+set(
+    SRCS
+
+    src/Text.cc
+    src/Tetris.cc
+    src/Timing.cc
+)
+
+include_directories(${CMAKE_SOURCE_DIR}/include)
+
+add_executable(${PROJECT_NAME} main.cc ${SRCS})
+
+target_link_libraries(${PROJECT_NAME} raylib)
+target_compile_options(${PROJECT_NAME} PRIVATE -Wno-c23-extensions)
+
+if (EMSCRIPTEN)
+    set_property(TARGET raylib PROPERTY INTERFACE_LINK_OPTIONS "-sUSE_GLFW=3")
+
+    set(CMAKE_EXE_LINKER_FLAGS
+        "${CMAKE_EXE_LINKER_FLAGS} \
+        -s ASSERTIONS=1 \
+        -s WASM=1 \
+        -s ASYNCIFY \
+        -s GL_ENABLE_GET_PROC_ADDRESS=1 \
+        -s EXPORTED_RUNTIME_METHODS=['ccall','requestFullscreen','HEAPF32'] \
+        -s SINGLE_FILE=1 \
+        -s ALLOW_MEMORY_GROWTH=1")
+    set(CMAKE_EXECUTABLE_SUFFIX ".js")
+
+    target_compile_definitions(${PROJECT_NAME} PRIVATE PLATFORM_WEB=1)
+
+    set(DEST_DIR "${CMAKE_SOURCE_DIR}/web/resources")
+
+    add_custom_command(
+        TARGET ${PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${DEST_DIR}"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                ${PROJECT_NAME}.js
+                "${DEST_DIR}"
+        WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+        COMMENT "Copying Web output files to web/resources"
+    )
+endif()
+
+if (APPLE)
+    target_link_libraries(${PROJECT_NAME} "-framework CoreVideo")
+    target_link_libraries(${PROJECT_NAME} "-framework IOKit")
+    target_link_libraries(${PROJECT_NAME} "-framework Cocoa")
+    target_link_libraries(${PROJECT_NAME} "-framework OpenGL")
+    target_link_libraries(${PROJECT_NAME} "-framework GLUT")
+endif()
+
+add_custom_target(run
+    COMMAND ${PROJECT_NAME}
+    DEPENDS ${PROJECT_NAME}
+    COMMENT "Running app"
+)
+
+add_custom_target(web COMMAND ${CMAKE_COMMAND} --build
+                  ${CMAKE_SOURCE_DIR}/build-web COMMAND ${CMAKE_COMMAND} -E
+                  copy ${CMAKE_SOURCE_DIR}/build-web/${PROJECT_NAME}.js
+                  ${CMAKE_SOURCE_DIR}/web/resources/ WORKING_DIRECTORY
+                  ${CMAKE_SOURCE_DIR})
+```
+
+This section does the following:
+- Sets CMake linker flags
+- Sets `ASYNCIFY` (which rewrites every code path to be pausable and resumable). This increases the binary size.
+- Tells emscripten that we want a single JS file as output, which lets us easily embed it into a browser from a CDN or storage bucket. This embeds the WASM directly in the JavaScript, which increases the size of the output file but makes usage extremely convenient.
+- The last command just tells CMake to drop the final WASM file into an output directory of your choosing.
+
+Whenever I want to create a game that I want to be playable in a browser, or tool that requires something other than JavaScript, I reach for this. It's a pretty good setup, and if you need filesystem access, there are ways to do it (such as via IndexedDB, or even through a remote filesystem). 
+
+You can find the full source code [here](https://github.com/ethandedalus/minitetris) or you can click "Source" in the caption of the game.
+
+Thanks for reading, see you next time. 
+
+
+
+
+
+

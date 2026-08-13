@@ -39,20 +39,24 @@ const { src, caption, link } = Astro.props;
     class="max-w-full rounded-md emscripten hidden"
     id="canvas"
     tabindex="-1"></canvas>
-  <small class="self-start"
-    >{caption}{
-      link ? (
+  <small class="flex items-center gap-2 self-start font-sans text-sm">
+    <span>{caption}</span>
+    {
+      link && (
         <>
-          |
-          <a href={link} about="_blank" rel="noreferrer">
+          <span aria-hidden="true">|</span>
+          <a
+            href={link}
+            target="_blank"
+            rel="noreferrer"
+            class="hover:text-primary underline underline-offset-2 transition-colors"
+          >
             Source
           </a>
         </>
-      ) : (
-        ""
       )
-    }</small
-  >
+    }
+  </small>
 </div>
 
 <script type="text/javascript" is:inline>

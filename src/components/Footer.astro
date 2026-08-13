@@ -1,12 +1,13 @@
 ---
 const today = new Date();
+import { SITE_TITLE } from "~/consts";
 ---
 
 <footer class="border-border mt-16 border-t">
   <div
     class="text-muted-foreground mx-auto flex w-full max-w-3xl flex-col gap-2 px-4 py-8 text-sm sm:flex-row sm:items-center sm:justify-between sm:px-6"
   >
-    <p>&copy; {today.getFullYear()} Ethan Dedalus. All rights reserved.</p>
+    <p>&copy; {today.getFullYear()} {SITE_TITLE}. All rights reserved.</p>
     <div class="flex items-center gap-4">
       <a href="/rss.xml" class="hover:text-primary transition-colors">RSS</a>
       <a

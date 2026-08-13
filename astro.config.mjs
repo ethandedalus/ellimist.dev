@@ -9,6 +9,7 @@ import svelte from '@astrojs/svelte';
 import { defineConfig, fontProviders } from 'astro/config';
 
 import { pluginCollapsibleSections } from '@expressive-code/plugin-collapsible-sections';
+import { pluginLineNumbers } from '@expressive-code/plugin-line-numbers';
 import expressiveCode from 'astro-expressive-code';
 import rehypeKatex from 'rehype-katex';
 import remarkMath from 'remark-math';
@@ -31,7 +32,7 @@ export default defineConfig({
             useDarkModeMediaQuery: false,
             themeCssSelector: (theme) =>
                 theme.type === 'dark' ? '.dark' : ':root:not(.dark)',
-            plugins: [pluginCollapsibleSections()],
+            plugins: [pluginCollapsibleSections(), pluginLineNumbers()],
             styleOverrides: {
                 borderRadius: '0.5rem',
                 codeFontSize: '0.875rem',

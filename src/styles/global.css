@@ -360,9 +360,9 @@ a.chip-series:hover {
 	background-color: var(--color-muted);
 	border: 1px solid var(--color-border);
 	border-radius: var(--radius-sm);
-	padding: 0.125rem 0.35rem;
+	padding: 0.0875rem 0.1rem;
 	font-family: var(--font-mono);
-	font-size: 0.875em;
+	font-size: 0.75em;
 	font-weight: 500;
 }
 
