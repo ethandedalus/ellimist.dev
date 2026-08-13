@@ -1,0 +1,16 @@
+---
+title: "Enabling Dark Mode in the GCP Console"
+description: "How to enable the hidden dark mode in the Google Cloud Console"
+pubDate: "August 6 2026"
+tags:
+  - gcp
+---
+
+If the blinding white of the GCP console is burning your eyes, open up devtools and paste the following lines of javascript into the console and execute them:
+
+```js
+document.body.setAttribute("data-cm-color-scheme", "dark");
+document.body.setAttribute("data-cm-dark-launched", "true");
+```
+
+This will fix most of the problems. At least for now. Hopefully they update the console to have a toggle natively.

@@ -20,14 +20,18 @@
     "@astrojs/rss": "^4.0.19",
     "@astrojs/sitemap": "^3.7.3",
     "@astrojs/svelte": "^9.0.1",
+    "@expressive-code/core": "^0.44.1",
     "@expressive-code/plugin-collapsible-sections": "^0.44.1",
     "@expressive-code/plugin-line-numbers": "^0.44.1",
+    "@fujocoded/expressive-code-caption": "^0.0.3",
     "@lucide/svelte": "^1.31.0",
     "@tailwindcss/typography": "^0.5.20",
     "@tailwindcss/vite": "^4.3.3",
+    "@xt0rted/expressive-code-file-icons": "^1.0.0",
     "astro": "^7.2.1",
     "astro-expressive-code": "^0.44.1",
     "clsx": "^2.1.1",
+    "github-slugger": "^2.0.0",
     "katex": "^0.18.4",
     "minisearch": "^7.2.0",
     "prettier-plugin-astro": "^0.14.1",
@@ -37,7 +41,8 @@
     "svelte": "^5.56.8",
     "tailwind-merge": "^3.6.0",
     "tailwind-variants": "^3.3.1",
-    "tailwindcss": "^4.3.3"
+    "tailwindcss": "^4.3.3",
+    "unist-util-visit": "^5.1.0"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.10",
@@ -50,6 +55,9 @@
       "esbuild",
       "sharp"
     ],
-    "overrides": {}
+    "overrides": {
+      "@expressive-code/core": "^0.44.1",
+      "@expressive-code/plugin-frames": "^0.44.1"
+    }
   }
 }

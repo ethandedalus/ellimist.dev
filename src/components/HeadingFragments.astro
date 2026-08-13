@@ -1,0 +1,91 @@
+---
+// Keeps the URL fragment pointing at the heading you are currently reading, so
+// reloading a long article lands you back near where you left off. Astro already
+// gives every markdown heading an `id`; this only tracks them.
+//
+// Inline and framework-free: it runs before the article is scrolled and has no
+// markup of its own.
+---
+
+<script is:inline>
+	(() => {
+		// View transitions keep `window` alive across navigations, so a second
+		// copy of this script would double up the scroll listener. One instance
+		// installs itself and re-reads the document on every page load instead.
+		if (window.__headingFragments) return;
+		window.__headingFragments = true;
+
+		const root = document.documentElement;
+		let headings = [];
+		let current = '';
+		let queued = false;
+
+		// `scroll-margin-top` in global.css reads this, so a heading anchored by
+		// a link and a heading counted as current land on the same line. The
+		// header wraps to two rows on narrow screens, hence measuring it.
+		const measureHeader = () => {
+			const header = document.querySelector('header');
+			if (!header) return;
+			root.style.setProperty('--header-height', header.offsetHeight + 'px');
+		};
+
+		const scan = () => {
+			const article = document.querySelector('.prose');
+			headings = article
+				? [...article.querySelectorAll(':is(h2, h3, h4)[id]')]
+				: [];
+			current = decodeURIComponent(location.hash.slice(1));
+		};
+
+		const update = () => {
+			queued = false;
+			// Nothing to track on a page without an article. Leave the URL alone.
+			if (!headings.length) return;
+
+			// The current heading is the last one at or above the anchor line.
+			// A single pixel of slack keeps a heading parked exactly on the line
+			// from flickering between itself and the previous one.
+			const line = parseFloat(getComputedStyle(headings[0]).scrollMarginTop) + 1;
+			let id = '';
+			for (const heading of headings) {
+				if (heading.getBoundingClientRect().top > line) break;
+				id = heading.id;
+			}
+
+			if (id === current) return;
+			current = id;
+
+			// `replaceState` rather than assigning `location.hash`: it neither
+			// scrolls the page nor adds an entry to the back stack, so the back
+			// button still leaves the article in one press.
+			history.replaceState(
+				history.state,
+				'',
+				id ? '#' + encodeURIComponent(id) : location.pathname + location.search,
+			);
+		};
+
+		const schedule = () => {
+			if (queued) return;
+			queued = true;
+			requestAnimationFrame(update);
+		};
+
+		const refresh = () => {
+			measureHeader();
+			scan();
+			schedule();
+		};
+
+		refresh();
+		addEventListener('scroll', schedule, { passive: true });
+		addEventListener('resize', refresh);
+
+		// After the browser has restored the scroll position or jumped to an
+		// incoming fragment, record where that actually left us.
+		addEventListener('load', schedule);
+
+		// A navigation replaced the article, so the old headings are detached.
+		document.addEventListener('astro:page-load', refresh);
+	})();
+</script>

@@ -18,95 +18,59 @@
 // group it belongs to and assembles the tab widget in the browser.
 
 import {
-    AttachedPluginData,
-    PluginStyleSettings,
-    definePlugin,
+	AttachedPluginData,
+	PluginStyleSettings,
+	definePlugin,
 } from 'astro-expressive-code';
 
 const tabsData = new AttachedPluginData(() => ({
-    /** @type {string | undefined} */
-    group: undefined,
-    /** @type {string | undefined} */
-    label: undefined,
-    isGroupStart: false,
+	/** @type {string | undefined} */
+	group: undefined,
+	/** @type {string | undefined} */
+	label: undefined,
 }));
 
-// Blocks are preprocessed in document order, one file at a time, so tracking the
-// previously seen block per source file is enough to tell whether the current
-// block continues a run or starts one. Knowing this at build time lets the CSS
-// below hide continuation blocks before the widget is assembled, which avoids a
-// flash of stacked code blocks.
-/** @type {Map<string, { group: string | undefined, index: number }>} */
-const lastBlockPerFile = new Map();
-
-/**
- * @param {import('astro-expressive-code').ExpressiveCodeBlock} codeBlock
- * @param {string | undefined} group
- * @returns {boolean} whether this block starts a new run
- */
-function startsNewRun(codeBlock, group) {
-    const parent = codeBlock.parentDocument;
-    const position = parent?.positionInDocument;
-    if (!position) return true;
-
-    const key = parent?.sourceFilePath ?? '';
-    const previous = lastBlockPerFile.get(key);
-    const continuesRun =
-        group !== undefined &&
-        previous !== undefined &&
-        previous.group === group &&
-        previous.index === position.groupIndex - 1;
-
-    if (
-        position.totalGroups !== undefined &&
-        position.groupIndex === position.totalGroups - 1
-    ) {
-        lastBlockPerFile.delete(key);
-    } else {
-        lastBlockPerFile.set(key, { group, index: position.groupIndex });
-    }
-
-    return !continuesRun;
-}
-
 const codeTabsStyleSettings = new PluginStyleSettings({
-    defaultValues: {
-        codeTabs: {
-            barBackground: ({ theme }) =>
-                theme.colors['editorGroupHeader.tabsBackground'] ||
-                theme.colors['editor.background'],
-            barBorderColor: ({ resolveSetting }) =>
-                resolveSetting('borderColor'),
-            // Matching the code background makes the active tab read as part
-            // of the panel below it; `tab.activeBackground` often doesn't.
-            activeTabBackground: ({ resolveSetting }) =>
-                resolveSetting('codeBackground'),
-            activeTabForeground: ({ theme }) =>
-                theme.colors['tab.activeForeground'] ||
-                theme.colors['editor.foreground'],
-            activeTabIndicatorColor: ({ theme }) =>
-                theme.colors['tab.activeBorderTop'] ||
-                theme.colors['tab.activeBorder'] ||
-                theme.colors['focusBorder'],
-            inactiveTabBackground: ({ resolveSetting }) =>
-                resolveSetting('codeTabs.barBackground'),
-            inactiveTabForeground: ({ theme }) =>
-                theme.colors['tab.inactiveForeground'] ||
-                theme.colors['editor.foreground'],
-            indicatorHeight: ({ resolveSetting }) =>
-                resolveSetting('borderWidth'),
-        },
-    },
-    preventUnitlessValues: ['codeTabs.indicatorHeight'],
+	defaultValues: {
+		codeTabs: {
+			barBackground: ({ theme }) =>
+				theme.colors['editorGroupHeader.tabsBackground'] ||
+				theme.colors['editor.background'],
+			barBorderColor: ({ resolveSetting }) =>
+				resolveSetting('borderColor'),
+			// Matching the code background makes the active tab read as part
+			// of the panel below it; `tab.activeBackground` often doesn't.
+			activeTabBackground: ({ resolveSetting }) =>
+				resolveSetting('codeBackground'),
+			activeTabForeground: ({ theme }) =>
+				theme.colors['tab.activeForeground'] ||
+				theme.colors['editor.foreground'],
+			activeTabIndicatorColor: ({ theme }) =>
+				theme.colors['tab.activeBorderTop'] ||
+				theme.colors['tab.activeBorder'] ||
+				theme.colors['focusBorder'],
+			inactiveTabBackground: ({ resolveSetting }) =>
+				resolveSetting('codeTabs.barBackground'),
+			inactiveTabForeground: ({ theme }) =>
+				theme.colors['tab.inactiveForeground'] ||
+				theme.colors['editor.foreground'],
+			indicatorHeight: ({ resolveSetting }) =>
+				resolveSetting('borderWidth'),
+		},
+	},
+	preventUnitlessValues: ['codeTabs.indicatorHeight'],
 });
 
 /** @param {import('astro-expressive-code').ResolverContext} context */
 function getBaseStyles({ cssVar }) {
-    return `
-		/* Until the widget is built, only the first block of a run is shown.
-		   Gated on scripting so the blocks stay readable without JS. */
+	return `
+		/* Until the widget is built, only the first block of a run is shown, so
+		   the page doesn't flash a stack of blocks. CSS can't compare the group
+		   names, so two adjacent blocks from *different* groups also collapse
+		   here; the script sorts that out as soon as it runs. Gated on scripting
+		   so the blocks stay readable without JS. */
 		@media (scripting: enabled) {
-			&[data-ec-group]:not([data-ec-group-start]) {
+			&[data-ec-group] + &[data-ec-group] {
 				display: none;
 			}
 		}
@@ -119,9 +83,21 @@ function getBaseStyles({ cssVar }) {
 			--ec-tabs-radius: ${cssVar('borderRadius')};
 			margin-block: 1.5rem;
 
+			/* The widget takes the column's width and never more, whatever it
+			   contains. Every box below states \`min-width: 0\` so that neither a
+			   long tab row nor a long line of code can establish a content-based
+			   floor — an ancestor only has to be a flex or grid container for
+			   the default \`min-width: auto\` to widen the page instead. */
+			width: 100%;
+			max-width: 100%;
+			min-width: 0;
+
 			.ec-tabs-list {
 				display: flex;
+				min-width: 0;
+				max-width: 100%;
 				overflow-x: auto;
+				overscroll-behavior-x: contain;
 				scrollbar-width: none;
 				background: ${cssVar('codeTabs.barBackground')};
 				border: ${cssVar('borderWidth')} solid ${cssVar('codeTabs.barBorderColor')};
@@ -136,6 +112,9 @@ function getBaseStyles({ cssVar }) {
 
 			.ec-tabs-list > button {
 				flex: none;
+				display: flex;
+				align-items: center;
+				gap: 0.45em;
 				margin: 0;
 				appearance: none;
 				border: none;
@@ -161,8 +140,28 @@ function getBaseStyles({ cssVar }) {
 				outline-offset: -3px;
 			}
 
+			.ec-tabs-panel {
+				min-width: 0;
+				max-width: 100%;
+			}
+
 			.ec-tabs-panel > .expressive-code {
 				margin: 0;
+				min-width: 0;
+				max-width: 100%;
+			}
+
+			.ec-tabs-panel > .expressive-code > .frame {
+				min-width: 0;
+				max-width: 100%;
+			}
+
+			/* Overflowing code scrolls within the block, as it does outside a
+			   tab group. Without this the frame is sized by its longest line. */
+			.ec-tabs-panel > .expressive-code > .frame > pre {
+				min-width: 0;
+				max-width: 100%;
+				overflow-x: auto;
 			}
 
 			.ec-tabs-panel > .expressive-code > .frame,
@@ -170,40 +169,63 @@ function getBaseStyles({ cssVar }) {
 				border-start-start-radius: 0;
 				border-start-end-radius: 0;
 			}
+
+			/* Narrow screens fit more tabs before scrolling is needed. */
+			@media (max-width: 30rem) {
+				.ec-tabs-list > button {
+					padding-inline: calc(${cssVar('uiPaddingInline')} * 0.55);
+					font-size: calc(${cssVar('uiFontSize')} * 0.9);
+				}
+			}
 		}
 	`;
 }
 
 /** @param {boolean} syncTabs */
 function getJsModule(syncTabs) {
-    return `
+	return `
 const syncTabs = ${syncTabs};
 
 /** @type {Map<string, Set<{ labels: string[], select: (index: number, focus?: boolean) => void }>>} */
 const groups = new Map();
 let uid = 0;
 
-function build(startBlock) {
-	const name = startBlock.getAttribute('data-ec-group');
-	if (!name) return;
+// The block's frame header already holds the label as other plugins left it —
+// a file icon next to the text, for instance — so the tab takes those nodes
+// rather than rebuilding the label from the raw string. Anything else the
+// header held moves onto the frame, which is where plugins put such controls
+// on an untitled block.
+function fillTab(tab, block) {
+	const frame = block.querySelector('.frame');
+	const header = frame && frame.querySelector(':scope > figcaption.header');
+	const title = header && header.querySelector('.title');
 
+	if (title) {
+		tab.replaceChildren(...title.childNodes);
+		title.remove();
+		frame.append(...header.children);
+		header.remove();
+		frame.classList.remove('has-title');
+	} else {
+		tab.textContent = block.getAttribute('data-ec-tab') || 'Code';
+	}
+
+	// Lets stylesheets reach the tab by language, e.g. to recolor an icon that
+	// is unreadable on one of the themes.
+	const pre = block.querySelector('pre[data-language]');
+	if (pre) tab.setAttribute('data-language', pre.getAttribute('data-language'));
+}
+
+function build(startBlock, name) {
 	const blocks = [startBlock];
 	let next = startBlock.nextElementSibling;
-	while (
-		next &&
-		next.classList.contains('expressive-code') &&
-		next.getAttribute('data-ec-group') === name &&
-		!next.hasAttribute('data-ec-group-start')
-	) {
+	while (next && next.getAttribute('data-ec-group') === name) {
 		blocks.push(next);
 		next = next.nextElementSibling;
 	}
 
-	// Dropping the markers reveals the blocks again and makes re-runs no-ops.
-	for (const block of blocks) {
-		block.removeAttribute('data-ec-group');
-		block.removeAttribute('data-ec-group-start');
-	}
+	// Dropping the marker reveals the blocks again and makes re-runs no-ops.
+	for (const block of blocks) block.removeAttribute('data-ec-group');
 	if (blocks.length < 2) return;
 
 	const id = ++uid;
@@ -232,7 +254,7 @@ function build(startBlock) {
 		tab.id = tabId;
 		tab.setAttribute('role', 'tab');
 		tab.setAttribute('aria-controls', panelId);
-		tab.textContent = block.getAttribute('data-ec-tab') || 'Code';
+		fillTab(tab, block);
 		tablist.appendChild(tab);
 
 		const panel = document.createElement('div');
@@ -247,6 +269,18 @@ function build(startBlock) {
 		panels.push(panel);
 	});
 
+	// Scrolls the tab row, never the page — \`scrollIntoView\` would move the
+	// document when a synced group is selected further down the article.
+	const revealTab = (tab) => {
+		const start = tab.offsetLeft;
+		const end = start + tab.offsetWidth;
+		if (start < tablist.scrollLeft) {
+			tablist.scrollLeft = start;
+		} else if (end > tablist.scrollLeft + tablist.clientWidth) {
+			tablist.scrollLeft = end - tablist.clientWidth;
+		}
+	};
+
 	const select = (index, focus) => {
 		tabs.forEach((tab, i) => {
 			const active = i === index;
@@ -254,6 +288,7 @@ function build(startBlock) {
 			tab.tabIndex = active ? 0 : -1;
 			panels[i].hidden = !active;
 		});
+		revealTab(tabs[index]);
 		if (focus) tabs[index].focus();
 	};
 
@@ -295,10 +330,17 @@ function build(startBlock) {
 	select(0);
 }
 
+// A run is a maximal set of adjacent siblings sharing a group name, so a block
+// starts one unless the element right before it is in the same group. Blocks
+// already pulled into a widget have lost the attribute and are skipped.
 function init() {
-	document
-		.querySelectorAll('.expressive-code[data-ec-group-start]')
-		.forEach(build);
+	for (const block of document.querySelectorAll('.expressive-code[data-ec-group]')) {
+		const name = block.getAttribute('data-ec-group');
+		if (!name) continue;
+		const previous = block.previousElementSibling;
+		if (previous && previous.getAttribute('data-ec-group') === name) continue;
+		build(block, name);
+	}
 }
 
 init();
@@ -313,57 +355,54 @@ document.addEventListener('astro:page-load', init);
  * on the same tab.
  */
 export function pluginCodeTabs(options = {}) {
-    const { syncTabs = true } = options;
+	const { syncTabs = true } = options;
 
-    return definePlugin({
-        name: 'Code Tabs',
-        styleSettings: codeTabsStyleSettings,
-        baseStyles: getBaseStyles,
-        jsModules: [getJsModule(syncTabs)],
-        hooks: {
-            preprocessMetadata: ({ codeBlock }) => {
-                const { metaOptions, props } = codeBlock;
-                const group = metaOptions.getString('group');
+	return definePlugin({
+		name: 'Code Tabs',
+		styleSettings: codeTabsStyleSettings,
+		baseStyles: getBaseStyles,
+		jsModules: [getJsModule(syncTabs)],
+		hooks: {
+			preprocessMetadata: ({ codeBlock }) => {
+				const { metaOptions, props } = codeBlock;
+				const group = metaOptions.getString('group');
 
-                if (group === undefined) {
-                    startsNewRun(codeBlock, undefined);
-                    return;
-                }
+				if (group === undefined) return;
 
-                const data = tabsData.getOrCreateFor(codeBlock);
-                data.group = group;
-                data.label =
-                    metaOptions.getString('tab') ??
-                    metaOptions.getString('title') ??
-                    codeBlock.language ??
-                    'Code';
-                data.isGroupStart = startsNewRun(codeBlock, group);
+				const data = tabsData.getOrCreateFor(codeBlock);
+				data.group = group;
+				data.label =
+					metaOptions.getString('tab') ??
+					metaOptions.getString('title') ??
+					codeBlock.language ??
+					'Code';
 
-                // The tab already names the block, so the frame header would
-                // just repeat it — unless the author asked for a frame.
-                if (metaOptions.getString('frame') === undefined) {
-                    props.frame = 'none';
-                }
-            },
+				// Give the block a title even when the author didn't ask for
+				// one. The title is the hook other plugins decorate — the file
+				// icons plugin only touches titled, non-terminal frames — and
+				// the script lifts the rendered title into the tab, so the
+				// header itself never reaches the page.
+				props.title = props.title ?? data.label;
+				if (metaOptions.getString('frame') === undefined) {
+					props.frame = 'code';
+				}
+			},
 
-            postprocessRenderedBlockGroup: ({
-                renderedGroupContents,
-                renderData,
-            }) => {
-                if (renderedGroupContents.length !== 1) return;
-                const data = tabsData.getOrCreateFor(
-                    renderedGroupContents[0].codeBlock,
-                );
-                if (!data.group) return;
+			postprocessRenderedBlockGroup: ({
+				renderedGroupContents,
+				renderData,
+			}) => {
+				if (renderedGroupContents.length !== 1) return;
+				const data = tabsData.getOrCreateFor(
+					renderedGroupContents[0].codeBlock,
+				);
+				if (!data.group) return;
 
-                const { groupAst } = renderData;
-                groupAst.properties = groupAst.properties ?? {};
-                groupAst.properties['data-ec-group'] = data.group;
-                groupAst.properties['data-ec-tab'] = data.label;
-                if (data.isGroupStart) {
-                    groupAst.properties['data-ec-group-start'] = '';
-                }
-            },
-        },
-    });
+				const { groupAst } = renderData;
+				groupAst.properties = groupAst.properties ?? {};
+				groupAst.properties['data-ec-group'] = data.group;
+				groupAst.properties['data-ec-tab'] = data.label;
+			},
+		},
+	});
 }

@@ -1,0 +1,1190 @@
+---
+title: "Production PostgreSQL on GCP, the Right Way"
+description: "A walkthrough of a real Terraform setup for Cloud SQL for PostgreSQL on GCP: one with no public IP, no database password anywhere in state, and no long-lived credentials in the application."
+pubDate: "March 15, 2026"
+tags:
+  - gcp
+  - cloud
+  - terraform
+  - postgres
+draft: false 
+series: "Adventures with GCP and Terraform"
+seriesPart: 1
+---
+
+## 1. Introduction
+
+The default configurations given by most Cloud SQL examples are generally designed to get you up and running, but have a few properties that make them unsuitable for use in production. The database is usually assigned a public IPv4 address and secured by an authorized-networks allowlist; the root password is chosen by hand, or, if the configuration is given in Terraform, generated via `random_password` and hence stored as plaintext in Terraform state; and applications given in the usage examples generally authenticate via credentials supplied through environment variables, e.g. `$POSTGRES_PASSWORD`.
+
+This post addresses each property, with the goal of presenting a complete, usable configuration that is sufficient for use in enterprise environments. The CloudSQL instance is provisioned sans public address, reachable only via Private Service Access (PSA), the root password is generated, stored in a secret, easily rotatable, and not present in Terraform state, and applications authenticate through Cloud SQL Auth Proxy using IAM authentication, so no database password is necessary. We will use a standalone [keycloak](https://github.com/keycloak/keycloak) service as an example application.
+
+The complete configuration is available [here](https://github.com/ethandedalus/adventures-with-gcp-and-terraform/tree/main), along with a lot of other goodies. Reusable modules are organized under `modules/`, and are composed depending on environment configuration, e.g. `dev`, `stage`, `prod`. Values used in this post assume a development environment, so they are optimized for cost at the expense of durability (e.g. `db-f1-micro`), but modules are parameterized and so the values can be easily swapped out to fit your needs.  
+
+## 2. Network prerequisites
+
+A Cloud SQL instance with a private address requires a VPC network, a subnet, and a Private Service Access connection. These must exist before the instance is created. The VPC module provisions all three, plus the firewall rules that govern the consumer subnet.
+
+```hcl group="vpc" tab="main.tf"
+resource "google_compute_network" "main" {
+  name                    = "${var.project_id}-vpc-${var.environment}"
+  project                 = var.project_id
+  auto_create_subnetworks = false
+  routing_mode            = var.routing_mode
+  mtu                     = var.mtu
+}
+
+resource "google_compute_subnetwork" "main" {
+  for_each                 = { for s in var.subnets : "${s.region}/${s.name}" => s }
+  name                     = each.value.name
+  project                  = var.project_id
+  region                   = each.value.region
+  network                  = google_compute_network.main.id
+  ip_cidr_range            = each.value.ip_cidr_range
+  private_ip_google_access = lookup(each.value, "enable_private_access", true)
+
+  dynamic "secondary_ip_range" {
+    for_each = each.value.secondary_ip_ranges != null ? each.value.secondary_ip_ranges : []
+    content {
+      range_name    = secondary_ip_range.value.range_name
+      ip_cidr_range = secondary_ip_range.value.ip_cidr_range
+    }
+  }
+
+  dynamic "log_config" {
+    for_each = each.value.flow_logs != null ? [""] : []
+    content {
+      aggregation_interval = each.value.flow_logs.aggregation_interval
+      flow_sampling        = each.value.flow_logs.sampling
+      metadata             = each.value.flow_logs.metadata
+    }
+  }
+}
+---
+`auto_create_subnetworks = false` suppresses creation of a default subnet in every region, making address planning explicit.
+---
+```
+
+```hcl group="vpc" tab="psa.tf"
+resource "google_compute_global_address" "psa" {
+  for_each      = { for r in var.psa_ranges : r.name => r }
+  name          = each.value.name
+  project       = var.project_id
+  purpose       = "VPC_PEERING"
+  address_type  = "INTERNAL"
+  address       = each.value.address
+  prefix_length = each.value.prefix_length
+  network       = google_compute_network.main.id
+}
+
+resource "google_service_networking_connection" "psa" {
+  count                   = length(var.psa_ranges) > 0 ? 1 : 0
+  network                 = google_compute_network.main.id
+  service                 = "servicenetworking.googleapis.com"
+  reserved_peering_ranges = [for r in google_compute_global_address.psa : r.name]
+  depends_on              = [google_compute_global_address.psa]
+  deletion_policy         = "ABANDON"
+}
+
+resource "google_compute_network_peering_routes_config" "psa" {
+  count   = length(var.psa_ranges) > 0 ? 1 : 0
+  project = var.project_id
+  peering = google_service_networking_connection.psa[0].peering
+  network = google_compute_network.main.name
+
+  export_custom_routes = false
+  import_custom_routes = false
+}
+```
+
+```hcl group="vpc" tab="firewall.tf"
+resource "google_compute_firewall" "rules" {
+  for_each = { for r in var.firewall_rules : r.name => r }
+  name     = "${var.project_id}-fw-${var.environment}-${each.value.name}"
+  project  = var.project_id
+  network  = google_compute_network.main.id
+  priority = each.value.priority
+
+  dynamic "allow" {
+    for_each = each.value.allow != null ? each.value.allow : []
+    content {
+      protocol = allow.value.protocol
+      ports    = lookup(allow.value, "ports", null)
+    }
+  }
+
+  dynamic "deny" {
+    for_each = each.value.deny != null ? each.value.deny : []
+    content {
+      protocol = deny.value.protocol
+      ports    = lookup(deny.value, "ports", null)
+    }
+  }
+
+  source_ranges = each.value.source_ranges
+  target_tags   = each.value.target_tags
+}
+```
+
+```hcl group="vpc" tab="variables.tf" collapse={1-17}
+variable "project_id" {
+  type = string
+}
+
+variable "environment" {
+  type = string
+}
+
+variable "routing_mode" {
+  type    = string
+  default = "GLOBAL"
+}
+
+variable "mtu" {
+  type    = number
+  default = null
+}
+
+variable "subnets" {
+  type = list(object({
+    name                  = string
+    region                = string
+    ip_cidr_range         = string
+    enable_private_access = optional(bool, true)
+    flow_logs = optional(object({
+      aggregation_interval = optional(string, "INTERVAL_5_SEC")
+      sampling             = optional(number, 0.5)
+      metadata             = optional(string, "INCLUDE_ALL_METADATA")
+    }))
+    secondary_ip_ranges = optional(list(object({
+      range_name    = string
+      ip_cidr_range = string
+    })))
+  }))
+  default = []
+}
+
+variable "psa_ranges" {
+  type = list(object({
+    name          = string
+    address       = string
+    prefix_length = number
+  }))
+  default = []
+}
+
+variable "firewall_rules" {
+  type = list(object({
+    name     = string
+    priority = optional(number, 1000)
+    allow = optional(list(object({
+      protocol = string
+      ports    = optional(list(string))
+    })))
+    deny = optional(list(object({
+      protocol = string
+      ports    = optional(list(string))
+    })))
+    source_ranges = optional(list(string))
+    target_tags   = optional(list(string))
+  }))
+  default = []
+}
+```
+
+```hcl group="vpc" tab="outputs.tf"
+output "network_id" {
+  value = google_compute_network.main.id
+}
+
+output "network_name" {
+  value = google_compute_network.main.name
+}
+
+output "network_self_link" {
+  value = google_compute_network.main.self_link
+}
+
+output "subnets" {
+  value = { for k, v in google_compute_subnetwork.main : k => v }
+}
+
+output "subnet_ids" {
+  value = { for k, v in google_compute_subnetwork.main : k => v.id }
+}
+
+output "subnet_self_links" {
+  value = { for k, v in google_compute_subnetwork.main : k => v.self_link }
+}
+
+output "psa_connection" {
+  value = try(google_service_networking_connection.psa[0].id, null)
+}
+
+output "subnet_secondary_ranges" {
+  value = {
+    for k, v in google_compute_subnetwork.main : k => v.secondary_ip_range
+  }
+}
+```
+
+```hcl group="vpc" tab="versions.tf"
+terraform {
+  required_version = "~> 1.14.0"
+  required_providers {
+    google = {
+      source  = "hashicorp/google"
+      version = "~> 7.14.0"
+    }
+  }
+}
+```
+
+Subnets are declared explicitly. The parameter `private_ip_google_access` is enabled. This allows resources without external addresses to reach Google API endpoints, which is necessary for them to reach things like Artifact Registry, Secret Manager, and the Cloud SQL Admin API. 
+
+The development environment instantiates the module as follows.
+
+```hcl title="envs/dev/01-infra/main.tf"
+module "vpc" {
+  source      = "../../../modules/vpc"
+  project_id  = var.project_id
+  environment = "dev"
+
+  subnets = [
+    {
+      name          = "main"
+      region        = var.region
+      ip_cidr_range = "10.0.0.0/20"
+      secondary_ip_ranges = [
+        {
+          range_name    = "gke-pods"
+          ip_cidr_range = "10.1.0.0/16"
+        },
+        {
+          range_name    = "gke-services"
+          ip_cidr_range = "10.2.0.0/20"
+        }
+      ]
+    }
+  ]
+
+  psa_ranges = [
+    {
+      name          = "psa"
+      address       = "10.0.64.0"
+      prefix_length = 22
+    }
+  ]
+
+  firewall_rules = [
+    {
+      name          = "allow-internal"
+      allow         = [{ protocol = "all" }]
+      source_ranges = ["10.0.0.0/20"]
+    },
+    {
+      name          = "allow-health-checks"
+      allow         = [{ protocol = "tcp" }]
+      source_ranges = ["35.191.0.0/16", "130.211.0.0/22"]
+    },
+    {
+      name          = "allow-iap-ssh"
+      allow         = [{ protocol = "tcp", ports = ["22"] }]
+      source_ranges = ["35.235.240.0/20"]
+      target_tags   = ["allow-iap-ssh"]
+    },
+    {
+      name          = "deny-all-ingress"
+      priority      = 65534
+      deny          = [{ protocol = "all" }]
+      source_ranges = ["0.0.0.0/0"]
+    }
+  ]
+}
+```
+
+### 2.1. Private Service Access
+
+It's important to note that Cloud SQL instances with private IPs reside in a Google managed tenant project and connect to the VPC we created via peering. The VPC reserves an internal address block to allocate to the Google service networking API, and subsequently the Cloud SQL instance receives an address in the allocated range. 
+
+The `psa.tf` file declares all the resources necessary for PSA to work: a global internal address with `purpose = "VPC_PEERING"`, a service networking connection claiming the range, and a configuration declaring peering routes (which in this example neither imports nor exports custom routes).
+
+The reserved range is shared by all downstream PSA consumers in the network, and cannot be resized without disruption, so it's important to correctly size it at creation time. Setting `deletion_policy = "ABANDON"` is necessary since dependent instances will block a service networking connection from deletion, which would make `terraform destroy` fail. Consequently, the peering must be removed separately after `terraform destroy`. This tradeoff incurs no monetary cost since all VPC resources outlined in this example are free.
+
+The `allocated_ip_range` argument binds the instance to this allocation.
+
+### 2.2. Scope of VPC firewall rules
+
+The environment defines four rules: 
+- internal traffic within `10.0.0.0/20`
+- traffic from the Google health-check ranges `35.191.0.0/16` and `130.211.0.0/22`
+- SSH from the Identity-Aware Proxy (IAP) forwarding range `35.235.240.0/20`
+- a low-priority deny for all remaining ingress.
+
+These rules don't affect traffic to database instances, which go through the VPC peering. They control access to GCE instances. Access to database instances are enforced through the connectors and IAM. The ranges do not overlap (except the low-priority deny which spans the entire address space). 
+
+## 3. Instance configuration
+
+The Cloud SQL module is seven files: the instance itself, the credential machinery described in Section 4, and thin wrappers for databases and IAM users.
+
+```hcl group="cloudsql" tab="main.tf" collapse={28-42, 61-73}
+# [reference](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/sql_database_instance#argument-reference)
+resource "google_sql_database_instance" "main" {
+  name                = "${var.project_id}-db-${var.environment}"
+  project             = var.project_id
+  region              = var.region
+  database_version    = var.database_version
+  deletion_protection = var.deletion_protection
+
+  root_password_wo         = ephemeral.random_password.postgres.result
+  root_password_wo_version = var.postgres_password_version
+
+  settings {
+    tier                        = var.tier
+    edition                     = var.edition
+    user_labels                 = var.user_labels
+    activation_policy           = var.activation_policy
+    availability_type           = var.availability_type
+    connector_enforcement       = var.connector_enforcement
+    disk_autoresize             = var.disk_autoresize
+    deletion_protection_enabled = var.deletion_protection_enabled
+    disk_size                   = var.disk_size_gb
+    disk_type                   = var.disk_type
+
+    data_cache_config {
+      data_cache_enabled = var.data_cache_enabled
+    }
+
+    backup_configuration {
+      enabled                        = var.backup_config.enabled
+      point_in_time_recovery_enabled = var.backup_config.point_in_time_recovery
+      start_time                     = var.backup_config.start_time
+      location                       = var.backup_config.location
+      transaction_log_retention_days = var.backup_config.transaction_log_retention_days
+
+      dynamic "backup_retention_settings" {
+        for_each = var.backup_config.retention_count != null ? [""] : []
+        content {
+          retained_backups = var.backup_config.retention_count
+          retention_unit   = "COUNT"
+        }
+      }
+    }
+
+    ip_configuration {
+      ipv4_enabled                                  = false
+      private_network                               = var.network_id
+      enable_private_path_for_google_cloud_services = true
+      ssl_mode                                      = var.ssl_mode
+      allocated_ip_range                            = var.allocated_ip_range
+    }
+
+    dynamic "database_flags" {
+      for_each = var.flags
+      content {
+        name  = database_flags.key
+        value = database_flags.value
+      }
+    }
+
+
+    maintenance_window {
+      day          = var.maintenance_window.day
+      hour         = var.maintenance_window.hour
+      update_track = var.maintenance_window.update_track
+    }
+
+    insights_config {
+      query_insights_enabled  = var.insights_config.enabled
+      query_plans_per_minute  = var.insights_config.query_plans_per_minute
+      query_string_length     = var.insights_config.query_string_length
+      record_application_tags = var.insights_config.record_application_tags
+      record_client_address   = var.insights_config.record_client_address
+    }
+  }
+}
+```
+
+```hcl group="cloudsql" tab="secrets.tf"
+ephemeral "random_password" "postgres" {
+  length  = 24
+  special = false
+}
+
+resource "google_secret_manager_secret" "postgres_password" {
+  secret_id = "${var.project_id}-postgres-password-${var.environment}"
+  project   = var.project_id
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "postgres_password" {
+  secret                 = google_secret_manager_secret.postgres_password.id
+  secret_data_wo         = ephemeral.random_password.postgres.result
+  secret_data_wo_version = var.postgres_password_version
+}
+
+resource "google_secret_manager_secret_iam_member" "postgres_password_access" {
+  secret_id = google_secret_manager_secret.postgres_password.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${var.terraform_sa_email}"
+}
+```
+
+```hcl group="cloudsql" tab="users.tf"
+resource "google_sql_user" "iam" {
+  for_each = toset(var.iam_users)
+
+  name     = each.key
+  instance = google_sql_database_instance.main.name
+  project  = var.project_id
+  type     = "CLOUD_IAM_SERVICE_ACCOUNT"
+}
+```
+
+```hcl group="cloudsql" tab="databases.tf"
+resource "google_sql_database" "databases" {
+  for_each = toset(var.databases)
+
+  name     = each.value
+  instance = google_sql_database_instance.main.name
+  project  = var.project_id
+}
+```
+
+```hcl group="cloudsql" tab="variables.tf" collapse={1-40}
+variable "project_id" {
+  type = string
+}
+
+variable "environment" {
+  type = string
+}
+
+variable "region" {
+  type = string
+}
+
+variable "network_id" {
+  type        = string
+  description = "VPC network ID for private IP"
+}
+
+variable "database_version" {
+  type = string
+}
+
+variable "tier" {
+  type = string
+}
+
+variable "edition" {
+  type = string
+  validation {
+    condition     = contains(["ENTERPRISE", "ENTERPRISE_PLUS"], var.edition)
+    error_message = "Edition must be ENTERPRISE or ENTERPRISE_PLUS."
+  }
+}
+
+variable "availability_type" {
+  type = string
+  validation {
+    condition     = contains(["ZONAL", "REGIONAL"], var.availability_type)
+    error_message = "Availability type must be ZONAL or REGIONAL."
+  }
+}
+
+variable "disk_size_gb" {
+  type = number
+}
+
+variable "disk_type" {
+  type = string
+}
+
+variable "disk_autoresize" {
+  type = bool
+}
+
+variable "ssl_mode" {
+  type = string
+  validation {
+    condition     = contains(["ALLOW_UNENCRYPTED_AND_ENCRYPTED", "ENCRYPTED_ONLY", "TRUSTED_CLIENT_CERTIFICATE_REQUIRED"], var.ssl_mode)
+    error_message = "Invalid SSL mode."
+  }
+}
+
+variable "deletion_protection" {
+  type = bool
+}
+
+variable "flags" {
+  type        = map(string)
+  description = "Database flags as key-value pairs"
+}
+
+variable "databases" {
+  type = list(string)
+}
+
+variable "iam_users" {
+  type        = list(string)
+  description = "Service account emails for IAM database users"
+}
+
+variable "backup_config" {
+  type = object({
+    enabled                        = optional(bool, true)
+    point_in_time_recovery         = optional(bool, true)
+    start_time                     = optional(string, "03:00")
+    location                       = optional(string)
+    transaction_log_retention_days = optional(number, 7)
+    retention_count                = optional(number, 7)
+  })
+}
+
+variable "maintenance_window" {
+  type = object({
+    day          = optional(number, 1) # Monday
+    hour         = optional(number, 4) # 4 AM
+    update_track = optional(string, "stable")
+  })
+}
+
+variable "insights_config" {
+  type = object({
+    enabled                 = optional(bool, true)
+    query_plans_per_minute  = optional(number, 5)
+    query_string_length     = optional(number, 1024)
+    record_application_tags = optional(bool, true)
+    record_client_address   = optional(bool, false)
+  })
+}
+
+variable "connector_enforcement" {
+  type = string
+  validation {
+    condition     = contains(["NOT_REQUIRED", "REQUIRED"], var.connector_enforcement)
+    error_message = "Connector enforcement must be NOT_REQUIRED or REQUIRED."
+  }
+}
+
+variable "deletion_protection_enabled" {
+  type        = bool
+  description = "GCP-level deletion protection (separate from Terraform's)"
+}
+
+variable "allocated_ip_range" {
+  type        = string
+  description = "Name of the allocated IP range for private IP (from PSA)"
+}
+
+variable "activation_policy" {
+  type = string
+  validation {
+    condition     = contains(["ALWAYS", "NEVER", "ON_DEMAND"], var.activation_policy)
+    error_message = "Activation policy must be ALWAYS, NEVER, or ON_DEMAND."
+  }
+}
+
+variable "data_cache_enabled" {
+  type        = bool
+  description = "Enable data cache (Enterprise Plus only)"
+}
+
+variable "user_labels" {
+  type        = map(string)
+  description = "User labels for the instance"
+}
+
+variable "postgres_password_version" {
+  type        = number
+  description = "Increment to rotate postgres password"
+}
+
+variable "terraform_sa_email" {
+  type        = string
+  description = "Terraform service account email for secret access"
+}
+```
+
+```hcl group="cloudsql" tab="outputs.tf"
+output "instance_name" {
+  value = google_sql_database_instance.main.name
+}
+
+output "connection_name" {
+  value = google_sql_database_instance.main.connection_name
+}
+
+output "private_ip_address" {
+  value = google_sql_database_instance.main.private_ip_address
+}
+
+output "self_link" {
+  value = google_sql_database_instance.main.self_link
+}
+
+output "databases" {
+  value = { for k, v in google_sql_database.databases : k => v.name }
+}
+
+output "users" {
+  value = { for k, v in google_sql_user.iam : k => v.name }
+}
+
+output "postgres_password_secret" {
+  value = google_secret_manager_secret.postgres_password.id
+}
+
+output "postgres_password_secret_version" {
+  value = google_secret_manager_secret_version.postgres_password.id
+}
+```
+
+```hcl group="cloudsql" tab="versions.tf"
+terraform {
+  required_version = "~> 1.14.0"
+  required_providers {
+    google = {
+      source  = "hashicorp/google"
+      version = "~> 7.14.0"
+    }
+  }
+}
+```
+
+Network access is declared in the `ip_configuration` block. Setting `ipv4_enabled = false` ensures the instance has no public address, and so no authorized networks configuration exists. Access to the instance from the public internet is impossible. Consequently, administrator access must go through a bastion host or a proxy.
+
+A couple other settings are worth noting: setting `ssl_mode = "ENCRYPTED_ONLY"` forces encrypted connections and `connector_enforcement = "REQUIRED"` requires connections to come through Cloud SQL Auth Proxy or another supported connector. This setting is important to strengthen the authentication requirements by forcing connections to happen through a connector.   
+
+Durability and maintenance settings are parameterized. Documentation on each setting can be found on the [official documentation page](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/sql_database_instance).
+
+The following configuration instantiates CloudSQL with the desired parameters.
+
+```hcl title="envs/dev/01-infra/main.tf"
+module "cloudsql" {
+  source = "../../../modules/cloudsql"
+
+  terraform_sa_email = "terraform@${var.project_id}.iam.gserviceaccount.com"
+
+  project_id          = var.project_id
+  environment         = "dev"
+  tier                = "db-f1-micro"
+  region              = var.region
+  edition             = "ENTERPRISE"
+  availability_type   = "ZONAL"
+  database_version    = "POSTGRES_18"
+  disk_size_gb        = 10
+  disk_type           = "PD_SSD"
+  deletion_protection = false
+
+  # increment to rotate root pw
+  postgres_password_version = 1
+
+
+  network_id                  = module.vpc.network_id
+  allocated_ip_range          = "psa"
+  deletion_protection_enabled = false
+  data_cache_enabled          = false
+
+  user_labels = {
+    environment = "dev"
+  }
+
+  activation_policy = "ALWAYS"
+
+  insights_config = {
+    enabled                 = true
+    query_plans_per_minute  = 5
+    query_string_length     = 1024
+    record_application_tags = true
+    record_client_address   = false
+  }
+
+  maintenance_window = {
+    day          = 1
+    hour         = 4
+    update_track = "stable"
+  }
+
+  disk_autoresize = true
+
+  ssl_mode              = "ENCRYPTED_ONLY"
+  connector_enforcement = "REQUIRED"
+
+  flags = {
+    "cloudsql.iam_authentication" = "on"
+    "log_lock_waits"              = "on"
+    "log_disconnections"          = "on"
+    "log_connections"             = "on"
+    "log_checkpoints"             = "on"
+    "log_temp_files"              = "0"
+  }
+
+  databases = ["example", "keycloak"]
+
+  iam_users = [
+    trimsuffix(google_service_account.accounts["app"].email, ".gserviceaccount.com"),
+    trimsuffix(google_service_account.accounts["keycloak"].email, ".gserviceaccount.com"),
+  ]
+
+  backup_config = {
+    enabled                = false # no need on a dev instance
+    point_in_time_recovery = false
+  }
+
+  depends_on = [module.vpc]
+}
+```
+
+Deletion protection is configured in two independent places. The `deletion_protection` argument on the resource prevents `terraform destroy` from deleting it; `settings.deletion_protection_enabled` argument that deletion via the Cloud SQL API or GCP console cannot occur unless this setting is disabled. These are distinct, and both should be enabled, at least in production.
+
+## 4. Eliminating credentials from Terraform state
+
+### 4.1. The persistence problem
+
+The easiest path to generating a root password is to use `random_password` and assign the return value to the instance's `password` parameter. Unfortunately, this results in both the generated and assigned value to be recorded in Terraform state. State is unencrypted by Terraform and has no field-level protections which means that the database root password is stored in plaintext in any saved plan file (`*.tfplan`), in CI artifacts that capture plan output, in the result of `terraform show`, and in the remote state backend (usually a GCS bucket). Anyone person, agent, or other principal with access to the state backend then has access to the database root password.
+
+### 4.2. Ephemeral values and write-only attributes
+
+Luckily, Terraform has the concept of ephemeral resources, which are values that exist during an operation but are not stored in either state or `*.tfplan` files. Write only attributes, denoted by `_wo` suffix, are passed through to the provider API without being recorded.
+
+The `secrets.tf` tab above applies both. The same ephemeral value is supplied to the instance in `main.tf`:
+
+```hcl title="modules/cloudsql/main.tf"
+  root_password_wo         = ephemeral.random_password.postgres.result
+  root_password_wo_version = var.postgres_password_version
+---
+The password never exists as a resource attribute, so there is nothing for
+`terraform show` to print and nothing for a plan artifact to leak.
+---
+```
+
+Each `_wo` attribute must be paired with a version so that Terraform can compute a diff (since write only attributes are missing in the state). A change to the version is what triggers updates. In this case, bumping `postgres_password_version` results in the ephemeral resource to be regenerated and consumers to receive the new value when `apply` is run. Because of this, credential rotation is as easy as incrementing the version. 
+
+The generated password is stored in Secret Manager. Access is granted narrowly through `google_secret_manager_secret_iam_member`, which assigns `roles/secretmanager.secretAccessor` to the Terraform service account.
+
+These features require recent versions of both Terraform and the provider. Write-only arguments were introduced in Terraform 1.11. The configuration provided in this example pins `required_version = "~> 1.14.0"` and the Google provider at `~> 7.14.0`.
+
+The administrative password exists, but is not used by applications.
+
+## 5. Eliminating credentials from application configuration
+
+Cloud SQL IAM authentication allows principals to authenticate to a Cloud SQL instance with tokens in lieu of passwords. Configuring it requires changes at three layers.
+
+### 5.1. Instance configuration
+
+IAM authentication is enabled by a database flag, supplied by the environment along with the logging flags discussed in Section 6: 
+
+```hcl title="envs/dev/01-infra/main.tf"
+  flags = {
+    "cloudsql.iam_authentication" = "on"
+    "log_lock_waits"              = "on"
+    "log_disconnections"          = "on"
+    "log_connections"             = "on",
+    "log_checkpoints"             = "on",
+    "log_temp_files"              = "0"
+  }
+```
+
+Database users are then declared with `type = "CLOUD_IAM_SERVICE_ACCOUNT"`, as in the `users.tf` tab above. Users of this type have no password.
+
+The user name is not the full service account email. The environment configuration removes the domain suffix:
+
+```hcl title="envs/dev/01-infra/main.tf"
+  iam_users = [
+    trimsuffix(google_service_account.accounts["app"].email, ".gserviceaccount.com"),
+    trimsuffix(google_service_account.accounts["keycloak"].email, ".gserviceaccount.com"),
+  ]
+---
+An incorrect name does not fail at apply time. It fails at connection time, which is less convenient to diagnose.
+---
+```
+
+This suffix trimming is required.
+
+### 5.2. IAM bindings
+
+Each service account requires two project-level roles, granted in the environment configuration:
+
+```hcl title="envs/dev/01-infra/iam.tf"
+resource "google_project_iam_member" "cloudsql_client" {
+  for_each = local.app_service_accounts
+  project  = var.project_id
+  role     = "roles/cloudsql.client"
+  member   = "serviceAccount:${google_service_account.accounts[each.key].email}"
+}
+
+resource "google_project_iam_member" "cloudsql_instance_user" {
+  for_each = local.app_service_accounts
+  project  = var.project_id
+  role     = "roles/cloudsql.instanceUser"
+  member   = "serviceAccount:${google_service_account.accounts[each.key].email}"
+}
+```
+
+The `roles/cloudsql.client` role authorizes connection through Cloud SQL Auth Proxy. The `roles/cloudsql.instanceUser` role authorizes login as an IAM database user. Both are necessary. Without both, you will observe a connection failure.
+
+### 5.3. Client configuration
+
+We use the example of running a standard, single VPS Keycloak server. A production Keycloak deployment on Kubernetes will be its own post in the future! The VPS is a Container-Optimized OS GCE instance running Cloud SQL Auth Proxy as a sidecar. The sidecar and the application are colocated in the same Docker network. Keycloak addresses the proxy by name, and doesn't concern itself with the database's actual address.
+
+```bash group="keycloak" tab="startup.sh.tpl" icon="shell" collapse={43-58}
+#!/bin/bash
+set -euo pipefail
+
+export HOME=/home/chronos
+docker-credential-gcr configure-docker --registries ${region}-docker.pkg.dev
+
+ADMIN_PASSWORD=$(docker run --rm \
+  gcr.io/google.com/cloudsdktool/google-cloud-cli:slim \
+  gcloud secrets versions access latest \
+  --secret="${project_id}-keycloak-admin-${environment}" \
+  --project="${project_id}")
+
+docker network create keycloak-net
+
+docker run -d \
+  --name cloud-sql-proxy \
+  --network keycloak-net \
+  --restart unless-stopped \
+  gcr.io/cloud-sql-connectors/cloud-sql-proxy:${cloud_sql_proxy_version} \
+  --auto-iam-authn \
+  --private-ip \
+  --address 0.0.0.0 \
+  --port 5432 \
+  ${cloud_sql_connection_name}
+
+sleep 5
+
+docker run -d \
+  --name keycloak \
+  --network keycloak-net \
+  --restart unless-stopped \
+  -e 'KC_DB=postgres' \
+  -e 'KC_DB_URL=jdbc:postgresql://cloud-sql-proxy:5432/${db_name}' \
+  -e 'KC_DB_USERNAME=${db_user}' \
+  -e 'KC_HOSTNAME=${hostname}' \
+  -e 'KC_HTTP_ENABLED=true' \
+  -e 'KC_PROXY_HEADERS=xforwarded' \
+  -e 'KC_BOOTSTRAP_ADMIN_USERNAME=admin' \
+  -e "KC_BOOTSTRAP_ADMIN_PASSWORD=$ADMIN_PASSWORD" \
+  ${keycloak_image} \
+  start --optimized
+
+mkdir -p /home/clouduser/caddy/data
+cat <<'CADDYEOF' > /home/clouduser/caddy/Caddyfile
+${hostname} {
+    reverse_proxy keycloak:8080
+}
+CADDYEOF
+
+docker run -d \
+  --name caddy \
+  --network keycloak-net \
+  --restart unless-stopped \
+  -p 80:80 \
+  -p 443:443 \
+  -v /home/clouduser/caddy/Caddyfile:/etc/caddy/Caddyfile \
+  -v /home/clouduser/caddy/data:/data \
+  caddy:${caddy_version}
+---
+There is no `KC_DB_PASSWORD`. The proxy supplies a short-lived token per connection, so
+the application has no database credential to configure, store, or rotate.
+---
+```
+
+```hcl group="keycloak" tab="main.tf" collapse={11-51}
+locals {
+  db_user = trimsuffix(var.service_account_email, ".gserviceaccount.com")
+}
+
+resource "google_compute_address" "keycloak" {
+  name    = "${var.project_id}-keycloak-ip-${var.environment}"
+  project = var.project_id
+  region  = var.region
+}
+
+resource "google_compute_firewall" "keycloak_http" {
+  name    = "${var.project_id}-fw-${var.environment}-keycloak-http"
+  project = var.project_id
+  network = var.network_id
+
+  allow {
+    protocol = "tcp"
+    ports    = ["80"]
+  }
+
+  source_ranges = ["0.0.0.0/0"]
+  target_tags   = ["keycloak"]
+}
+
+resource "google_compute_firewall" "keycloak_https" {
+  name    = "${var.project_id}-fw-${var.environment}-keycloak-https"
+  project = var.project_id
+  network = var.network_id
+
+  allow {
+    protocol = "tcp"
+    ports    = ["443"]
+  }
+
+  source_ranges = ["0.0.0.0/0"]
+  target_tags   = ["keycloak"]
+}
+
+resource "google_compute_firewall" "keycloak_iap_ssh" {
+  name    = "${var.project_id}-fw-${var.environment}-keycloak-iap"
+  project = var.project_id
+  network = var.network_id
+
+  allow {
+    protocol = "tcp"
+    ports    = ["22"]
+  }
+
+  source_ranges = ["35.235.240.0/20"]
+  target_tags   = ["keycloak"]
+}
+
+resource "google_compute_instance" "keycloak" {
+  name         = "${var.project_id}-keycloak-${var.environment}"
+  project      = var.project_id
+  zone         = var.zone
+  machine_type = var.machine_type
+
+  deletion_protection = var.deletion_protection
+
+  boot_disk {
+    initialize_params {
+      image = "cos-cloud/cos-stable"
+      size  = 20
+      type  = "pd-standard"
+    }
+  }
+
+  network_interface {
+    subnetwork = var.subnet_id
+    access_config {
+      nat_ip = google_compute_address.keycloak.address
+    }
+  }
+
+  service_account {
+    email  = var.service_account_email
+    scopes = ["https://www.googleapis.com/auth/cloud-platform"]
+  }
+
+  metadata = {
+    enable-oslogin = "TRUE"
+    startup-script = templatefile("${path.module}/startup.sh.tpl", {
+      keycloak_image            = var.keycloak_image
+      hostname                  = var.hostname
+      cloud_sql_connection_name = var.cloud_sql_connection_name
+      db_name                   = var.db_name
+      db_user                   = local.db_user
+      project_id                = var.project_id
+      environment               = var.environment
+      region                    = var.region
+      cloud_sql_proxy_version   = var.cloud_sql_proxy_version
+      caddy_version             = var.caddy_version
+    })
+  }
+
+  tags = ["keycloak"]
+
+  shielded_instance_config {
+    enable_secure_boot          = true
+    enable_integrity_monitoring = true
+  }
+}
+```
+
+```hcl group="keycloak" tab="secrets.tf"
+ephemeral "random_password" "keycloak_admin" {
+  length  = 24
+  special = false
+}
+
+resource "google_secret_manager_secret" "keycloak_admin" {
+  secret_id = "${var.project_id}-keycloak-admin-${var.environment}"
+  project   = var.project_id
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_iam_member" "keycloak_admin_access" {
+  secret_id = google_secret_manager_secret.keycloak_admin.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${var.service_account_email}"
+}
+
+resource "google_secret_manager_secret_version" "keycloak_admin" {
+  secret                 = google_secret_manager_secret.keycloak_admin.id
+  secret_data_wo         = ephemeral.random_password.keycloak_admin.result
+  secret_data_wo_version = var.keycloak_admin_password_version
+}
+```
+
+```hcl group="keycloak" tab="variables.tf" collapse={1-28}
+variable "project_id" {
+  type = string
+}
+
+variable "environment" {
+  type = string
+}
+
+variable "region" {
+  type = string
+}
+
+variable "zone" {
+  type = string
+}
+
+variable "network_id" {
+  type = string
+}
+
+variable "subnet_id" {
+  type = string
+}
+
+variable "machine_type" {
+  type    = string
+  default = "e2-small"
+}
+
+variable "keycloak_image" {
+  type        = string
+  description = "Full Artifact Registry image URL including tag"
+}
+
+variable "hostname" {
+  type        = string
+  description = "Public hostname for Keycloak e.g. idp.example.com"
+}
+
+variable "cloud_sql_connection_name" {
+  type        = string
+  description = "Cloud SQL connection name (project:region:instance)"
+}
+
+variable "db_name" {
+  type    = string
+  default = "keycloak"
+}
+
+variable "deletion_protection" {
+  type    = bool
+  default = false
+}
+
+variable "keycloak_admin_password_version" {
+  type        = number
+  description = "Increment to rotate keycloak admin password"
+}
+
+variable "cloud_sql_proxy_version" {
+  type    = string
+  default = "2.21.2"
+}
+
+variable "caddy_version" {
+  type    = string
+  default = "2.11.2"
+}
+
+variable "service_account_email" {
+  type        = string
+  description = "Email of the service account to run the instance as"
+}
+```
+
+```hcl group="keycloak" tab="outputs.tf"
+output "static_ip" {
+  value = google_compute_address.keycloak.address
+}
+
+output "instance_name" {
+  value = google_compute_instance.keycloak.name
+}
+```
+
+```hcl group="keycloak" tab="versions.tf"
+terraform {
+  required_version = "~> 1.14.0"
+  required_providers {
+    google = {
+      source  = "hashicorp/google"
+      version = "~> 7.14.0"
+    }
+  }
+}
+```
+
+The following block instantiates the standalone Keycloak application instance.
+
+```hcl title="envs/dev/01-infra/main.tf"
+module "keycloak-gce" {
+  source = "../../../modules/keycloak-gce"
+
+  project_id   = var.project_id
+  environment  = "dev"
+  region       = var.region
+  zone         = "${var.region}-a"
+  network_id   = module.vpc.network_id
+  subnet_id    = module.vpc.subnet_ids["${var.region}/main"]
+  machine_type = "e2-small"
+
+  keycloak_image            = "us-central1-docker.pkg.dev/${var.project_id}/example-dev-keycloak/keycloak:latest"
+  hostname                  = "idp.example.com"
+  cloud_sql_connection_name = module.cloudsql.connection_name
+  db_name                   = "keycloak"
+  deletion_protection       = false
+
+  keycloak_admin_password_version = 1
+  cloud_sql_proxy_version         = "2.21.2"
+  caddy_version                   = "2.11.2"
+  service_account_email           = google_service_account.accounts["keycloak"].email
+
+  depends_on = [module.vpc, module.cloudsql]
+}
+```
+
+Since we provide the `--auto-iam-authn` to the sidecar, the proxy requests a token for the GCE instance's service account and asserts it rather than a password, automatically refreshing it upon expiry since the tokens are short-lived. Providing the `--private-ip` flag configures the proxy to use the private IP address rather than try a public endpoint. Since the database username is derived from the service account name, the two cannot diverge.
+
+Keycloak's own root password follows the same pattern as the root database password discussed earlier. It's generated ephemerally, written only to Secret Manager, and not persisted anywhere else by Terraform. It is read by the service account at the start, and is not embedded in the container image or instance metadata.
+
+### 5.4. Operational properties
+
+The final configuration satisfies four important operational properties. Since tokens are short lived, there is no possibility of durable database credential leakage because there are none on the VPS to exfiltrate. Credential rotation is unnecessary because tokens generated by the proxy are short-lived by construction. Revoking access is accomplished by an IAM change and can be done with zero downtime as it does not require redeployment. Connector enforcement discussed earlier ensures no path exists that bypasses this mechanism. 
+
+## 6. Observability configuration
+
+Query Insights is enabled through the `insights_config` flag, which records the number of sampled query plans per minute, the maximum retained query string length, and whether application tags and client addresses are recorded. The development environment records application tags but does not record client addresses.
+
+The logging flags specified earlier cover connection lifecycle (`log_connections`, `log_disconnections`), lock contention (`log_lock_waits`), checkpoint activity (`log_checkpoints`), and temporary file creation (`log_temp_files`). Setting `log_temp_files = 0` logs every temporary file, and temporary file creation indicates that a sort or hash operation exceeded `work_mem` and spilled onto the disk, which is a signal that usually precedes a latency complaint.
+
+## 7. Limitations
+
+The configuration has the following known limitations.
+
+- `GRANT` for IAM users must be done manually, once, by an administrator, before IAM users will be able to perform operations on the database. If you have a hosted CI runner inside your VPC, this isn't an issue, because you can use the `postgresql` Terraform provider to manage the access of database users. For simplicity, and because I didn't want to provision a runner inside the VPC for this example, this configuration skips this. If you're using Kubernetes, you can pretty easily make an ephemeral runner that spins up on demand in your cluster, runs CI, and exits cleanly, which is what I would recommend, at least if you're using GitHub Actions.
+
+- Setting `deletion_policy = "ABANDON"` on the service networking connection causes the VPC peering to persist after `terraform destroy`, requiring manual removal. As stated earlier, the resource is free, so it's an inconvenience but not a costly one, especially if you're not frequently running `terraform destroy`.
+
+- The Private Service Access range cannot be resized after allocation without disrupting existing consumers, so the initial `/22` allocation constrains future growth. However, scaling past that point means the problems you have to solve are _good_ problems. The allocated range will get you quite far, and has the ability to allocate thousands of addresses.
+
+- No Cloud NAT gateway is provisioned. Workloads requiring general outbound internet access, as opposed to access to Google API endpoints, are not supported without further configuration, but that is outside the scope of this article. Terraforming Cloud NAT is relatively straightforward and would probably be necessary in a production setup.
+
+- The module does not provision read replicas or cross-region disaster recovery.
+
+- Backup restoration is not exercised automatically. The backup configuration is unverified without a periodic restore procedure.
+
+Thank you for reading.

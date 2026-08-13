@@ -8,13 +8,16 @@ import sitemap from '@astrojs/sitemap';
 import svelte from '@astrojs/svelte';
 import { defineConfig, fontProviders } from 'astro/config';
 
+import { pluginCodeCaption } from '@fujocoded/expressive-code-caption';
 import { pluginCollapsibleSections } from '@expressive-code/plugin-collapsible-sections';
 import { pluginLineNumbers } from '@expressive-code/plugin-line-numbers';
+import { pluginFileIcons } from '@xt0rted/expressive-code-file-icons';
 import expressiveCode from 'astro-expressive-code';
 import rehypeKatex from 'rehype-katex';
 import remarkMath from 'remark-math';
 
 import { pluginCodeTabs } from './plugins/expressive-code-code-tabs.mjs';
+import { rehypeHeadingSlugs } from './plugins/rehype-heading-slugs.mjs';
 
 import tailwindcss from '@tailwindcss/vite';
 
@@ -35,8 +38,15 @@ export default defineConfig({
             themeCssSelector: (theme) =>
                 theme.type === 'dark' ? '.dark' : ':root:not(.dark)',
             plugins: [
+                // Must run early: it reads the `---` caption fence out of the
+                // code before other plugins see the code as plaintext.
+                pluginCodeCaption(),
                 pluginCollapsibleSections(),
                 pluginLineNumbers(),
+                pluginFileIcons({
+                    iconClass: 'ec-file-icon',
+                    titleClass: 'ec-title-with-icon',
+                }),
                 pluginCodeTabs(),
             ],
             styleOverrides: {
@@ -55,7 +65,9 @@ export default defineConfig({
     markdown: {
         processor: unified({
             remarkPlugins: [remarkMath],
-            rehypePlugins: [rehypeKatex],
+            // `rehypeHeadingSlugs` must precede Astro's own heading-id plugin,
+            // which runs after every plugin listed here.
+            rehypePlugins: [rehypeHeadingSlugs, rehypeKatex],
         }),
     },
 
@@ -69,8 +81,6 @@ export default defineConfig({
             styles: ['normal'],
         },
         {
-            // Article body only — see `.prose` in global.css. Italic is
-            // included because prose actually uses it.
             provider: fontProviders.fontsource(),
             name: 'Newsreader',
             cssVariable: '--font-newsreader',

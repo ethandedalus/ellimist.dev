@@ -1,6 +1,7 @@
 ---
 import type { CollectionEntry } from "astro:content";
 import FormattedDate from "~/components/FormattedDate.astro";
+import HeadingFragments from "~/components/HeadingFragments.astro";
 import BaseLayout from "~/layouts/BaseLayout.astro";
 import { tagSlug } from "~/lib/tags";
 
@@ -63,4 +64,6 @@ const { title, description, pubDate, updatedDate, tags = [] } = Astro.props;
       <slot />
     </div>
   </article>
+
+  <HeadingFragments />
 </BaseLayout>

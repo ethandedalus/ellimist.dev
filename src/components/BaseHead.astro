@@ -3,6 +3,7 @@ import "~/styles/global.css";
 import "katex/dist/katex.min.css";
 import { SITE_TITLE } from "~/consts";
 import { Font } from "astro:assets";
+import { ClientRouter } from "astro:transitions";
 
 interface Props {
 	title: string;
@@ -22,14 +23,37 @@ const socialImage = new URL("/og-default.png", Astro.url);
 -->
 <script is:inline>
 	(() => {
-		try {
-			const stored = localStorage.getItem("theme");
-			const dark = stored
-				? stored === "dark"
-				: window.matchMedia("(prefers-color-scheme: dark)").matches;
-			document.documentElement.classList.toggle("dark", dark);
-		} catch (e) {
-			console.error(e);
+		const applyTheme = () => {
+			try {
+				const stored = localStorage.getItem("theme");
+				const dark = stored
+					? stored === "dark"
+					: window.matchMedia("(prefers-color-scheme: dark)").matches;
+				document.documentElement.classList.toggle("dark", dark);
+			} catch (e) {
+				console.error(e);
+			}
+		};
+
+		applyTheme();
+
+		// A view transition swaps in the incoming document's `<html>`
+		// attributes, which drops the `dark` class the toggle set. `after-swap`
+		// runs before the new page is painted, so re-applying here is invisible.
+		if (!window.__themeSwapBound) {
+			window.__themeSwapBound = true;
+			document.addEventListener("astro:after-swap", applyTheme);
+
+			// `scroll-behavior: smooth` would otherwise animate the router's
+			// jump to the top of the next page, which reads as a lurch
+			// underneath the fade. In-page anchors keep their smooth scroll.
+			const root = document.documentElement;
+			document.addEventListener("astro:before-swap", () => {
+				root.style.scrollBehavior = "auto";
+			});
+			document.addEventListener("astro:page-load", () => {
+				root.style.scrollBehavior = "";
+			});
 		}
 	})();
 </script>
@@ -58,6 +82,8 @@ const socialImage = new URL("/og-default.png", Astro.url);
 	href={new URL("rss.xml", Astro.site)}
 />
 <meta name="generator" content={Astro.generator} />
+
+<ClientRouter />
 
 <Font cssVariable="--font-catamaran" preload />
 <Font cssVariable="--font-newsreader" preload />

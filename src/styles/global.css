@@ -135,6 +135,15 @@
 
 	html {
 		scroll-behavior: smooth;
+		/* Measured at runtime by HeadingFragments.astro; the fallback matches
+		   the header's `sm:h-14`. */
+		--header-height: 3.5rem;
+	}
+
+	/* Anchored headings clear the sticky header instead of hiding beneath it.
+	   The same offset decides which heading counts as current while scrolling. */
+	.prose :is(h1, h2, h3, h4, h5, h6)[id] {
+		scroll-margin-top: calc(var(--header-height) + 1rem);
 	}
 
 	body {
@@ -402,6 +411,77 @@ a.chip-series:hover {
 .prose .expressive-code code::before,
 .prose .expressive-code code::after {
 	content: none;
+}
+
+/* The file-icons plugin only injects the SVG and the class names it is given —
+   the layout is ours. Specificity has to clear Expressive Code's
+   `.expressive-code *` reset, which is why `.frame` is in the selector. */
+.expressive-code .frame .title.ec-title-with-icon {
+	display: flex;
+	align-items: center;
+	gap: 0.45em;
+}
+
+/* Sized here rather than under `.frame`, because the tabs plugin moves the
+   rendered title — icon included — out of the frame header and into a tab. */
+.expressive-code .ec-file-icon {
+	flex: none;
+	width: 1.15em;
+	height: 1.15em;
+}
+
+/* The caption plugin ships exactly one style — `figcaption:last-child
+   { background-color: black }` — and exposes no options, so the design is
+   entirely ours. `:root` is there to win the specificity tie against it, since
+   Expressive Code's stylesheet is linked after this one. */
+:root .expressive-code > figcaption:last-child {
+	margin-block-start: 0.6rem;
+	padding-inline-start: 0.75rem;
+	border-inline-start: 2px solid var(--color-border);
+	background-color: transparent;
+	color: var(--color-muted-foreground);
+	font-family: var(--font-sans);
+	font-size: 0.8125rem;
+	line-height: 1.55;
+	text-wrap: pretty;
+}
+
+/* Expressive Code reverts every descendant to UA styles, so the caption's
+   markdown output has to be restyled from scratch. */
+.expressive-code > figcaption:last-child p {
+	margin: 0;
+}
+
+.expressive-code > figcaption:last-child p + p {
+	margin-block-start: 0.5em;
+}
+
+.expressive-code > figcaption:last-child code {
+	font-family: var(--font-mono);
+	font-size: 0.925em;
+	color: var(--color-foreground);
+}
+
+.expressive-code > figcaption:last-child a {
+	color: inherit;
+	text-decoration: underline;
+	text-underline-offset: 2px;
+}
+
+/* vscode-icons draws the Rust mark in near-black, which vanishes against the
+   dark theme. #dea584 is the Rust language color GitHub uses. The icon carries
+   no marker of which language it is, so match on the block's own attribute. */
+:root.dark
+	.expressive-code
+	.frame:has(pre[data-language='rust'])
+	.ec-file-icon
+	path,
+:root.dark
+	.ec-tabs-list
+	> button[data-language='rust']
+	.ec-file-icon
+	path {
+	fill: #dea584;
 }
 
 /* ---------------------------------------------------------------------------
