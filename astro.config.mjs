@@ -14,6 +14,8 @@ import expressiveCode from 'astro-expressive-code';
 import rehypeKatex from 'rehype-katex';
 import remarkMath from 'remark-math';
 
+import { pluginCodeTabs } from './plugins/expressive-code-code-tabs.mjs';
+
 import tailwindcss from '@tailwindcss/vite';
 
 // https://astro.build/config
@@ -32,7 +34,11 @@ export default defineConfig({
             useDarkModeMediaQuery: false,
             themeCssSelector: (theme) =>
                 theme.type === 'dark' ? '.dark' : ':root:not(.dark)',
-            plugins: [pluginCollapsibleSections(), pluginLineNumbers()],
+            plugins: [
+                pluginCollapsibleSections(),
+                pluginLineNumbers(),
+                pluginCodeTabs(),
+            ],
             styleOverrides: {
                 borderRadius: '0.5rem',
                 codeFontSize: '0.875rem',
