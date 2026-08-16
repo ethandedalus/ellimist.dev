@@ -18,6 +18,7 @@ import remarkMath from 'remark-math';
 
 import { pluginCodeTabs } from './plugins/expressive-code-code-tabs.mjs';
 import { rehypeHeadingSlugs } from './plugins/rehype-heading-slugs.mjs';
+import { rehypeMermaidBlocks } from './plugins/rehype-mermaid-blocks.mjs';
 
 import tailwindcss from '@tailwindcss/vite';
 
@@ -66,8 +67,9 @@ export default defineConfig({
         processor: unified({
             remarkPlugins: [remarkMath],
             // `rehypeHeadingSlugs` must precede Astro's own heading-id plugin,
-            // which runs after every plugin listed here.
-            rehypePlugins: [rehypeHeadingSlugs, rehypeKatex],
+            // and `rehypeMermaidBlocks` must precede Expressive Code. Both run
+            // after every plugin listed here, so listing these is enough.
+            rehypePlugins: [rehypeHeadingSlugs, rehypeMermaidBlocks, rehypeKatex],
         }),
     },
 
@@ -104,6 +106,14 @@ export default defineConfig({
             alias: {
                 '~': fileURLToPath(new URL('./src', import.meta.url)),
             },
+        },
+        optimizeDeps: {
+            // Mermaid is only ever reached through `import('mermaid')` inside an
+            // Astro component script, which Vite's dependency scanner does not
+            // look into. Without this it gets optimized on first request instead
+            // of at startup, and the browser asks for a `?v=` hash that no
+            // longer exists. Production builds were never affected.
+            include: ['mermaid'],
         },
     },
 });

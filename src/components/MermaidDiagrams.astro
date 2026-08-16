@@ -1,0 +1,159 @@
+---
+// Renders the containers produced by `plugins/rehype-mermaid-blocks.mjs`.
+//
+// Mermaid is a large dependency, so it is loaded through a dynamic import —
+// Vite emits it as its own chunk, which is requested only on pages that have a
+// diagram, and only once one is close to the viewport. Until then the container
+// holds a skeleton at the diagram's reserved height, so nothing reflows when the
+// SVG arrives.
+---
+
+<script>
+	const SELECTOR = 'figure[data-mermaid]';
+
+	let mermaidPromise: Promise<typeof import('mermaid').default> | undefined;
+	let observer: IntersectionObserver | undefined;
+	let themeWatcher: MutationObserver | undefined;
+	let renderedTheme: string | undefined;
+	let seq = 0;
+
+	const loadMermaid = () =>
+		(mermaidPromise ??= import('mermaid').then((m) => m.default));
+
+	const currentTheme = () =>
+		document.documentElement.classList.contains('dark') ? 'dark' : 'neutral';
+
+	const cssVar = (name: string) =>
+		getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+	async function renderAll() {
+		const figures = [...document.querySelectorAll<HTMLElement>(SELECTOR)];
+		if (!figures.length) return;
+
+		const theme = currentTheme();
+		const mermaid = await loadMermaid();
+
+		mermaid.initialize({
+			startOnLoad: false,
+			theme,
+			securityLevel: 'strict',
+			fontFamily: cssVar('--font-sans') || 'sans-serif',
+			// Dagre packs nodes tightly by default, which leaves edge labels
+			// overlapping each other on small graphs. A single diagram can
+			// override any of this through its own YAML frontmatter.
+			flowchart: {
+				nodeSpacing: 70,
+				rankSpacing: 80,
+				padding: 16,
+			},
+			// Block diagrams size each cell from its label plus this padding,
+			// and Mermaid's default of 8 leaves them touching.
+			block: {
+				padding: 28,
+			},
+			themeVariables: {
+				fontSize: '14px',
+			},
+		});
+
+		await Promise.all(
+			figures.map(async (figure) => {
+				const source = figure.querySelector('.mermaid-source')?.textContent;
+				const output = figure.querySelector('.mermaid-output');
+				if (!source || !output) return;
+
+				try {
+					// `render` requires an id it has not seen before, so a theme
+					// change cannot reuse the id from the previous pass.
+					const { svg } = await mermaid.render(`mermaid-${++seq}`, source);
+					output.innerHTML = svg;
+					figure.dataset.mermaidState = 'ready';
+				} catch (error) {
+					// Leaves the source visible via CSS rather than an empty box.
+					figure.dataset.mermaidState = 'error';
+					console.error('[mermaid] failed to render diagram:', error);
+				}
+			}),
+		);
+
+		renderedTheme = theme;
+	}
+
+	function setup() {
+		observer?.disconnect();
+		themeWatcher?.disconnect();
+		renderedTheme = undefined;
+
+		const figures = document.querySelectorAll<HTMLElement>(SELECTOR);
+		if (!figures.length) return;
+
+		// Nothing is fetched until a diagram is within a screen or so of view.
+		observer = new IntersectionObserver(
+			(entries, self) => {
+				if (!entries.some((entry) => entry.isIntersecting)) return;
+				self.disconnect();
+				renderAll();
+			},
+			{ rootMargin: '600px' },
+		);
+		figures.forEach((figure) => observer!.observe(figure));
+
+		// The toggle rewrites the class on <html>; diagrams already drawn need
+		// redrawing in the new palette, and ones not yet drawn will pick it up.
+		themeWatcher = new MutationObserver(() => {
+			if (renderedTheme && renderedTheme !== currentTheme()) renderAll();
+		});
+		themeWatcher.observe(document.documentElement, {
+			attributes: true,
+			attributeFilter: ['class'],
+		});
+	}
+
+	// Tab widgets are built in rehype, so this only wires up switching. Hidden
+	// panels still get their diagram drawn: `renderAll` walks every figure on the
+	// page, and Mermaid measures in its own detached container rather than in the
+	// target, so a `hidden` panel does not produce a zero-size SVG.
+	function setupTabs(root: ParentNode) {
+		root.querySelectorAll<HTMLElement>('.diagram-tabs').forEach((widget) => {
+			const tabs = [...widget.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+			const panels = [...widget.querySelectorAll<HTMLElement>('[role="tabpanel"]')];
+			if (tabs.length < 2) return;
+
+			const select = (index: number, focus?: boolean) => {
+				tabs.forEach((tab, i) => {
+					const active = i === index;
+					tab.setAttribute('aria-selected', String(active));
+					tab.tabIndex = active ? 0 : -1;
+					panels[i].hidden = !active;
+				});
+				if (focus) tabs[index].focus();
+			};
+
+			widget.querySelector('[role="tablist"]')!.addEventListener('click', (event) => {
+				const tab = (event.target as HTMLElement).closest('[role="tab"]');
+				const index = tabs.indexOf(tab as HTMLButtonElement);
+				if (index >= 0) select(index);
+			});
+
+			widget.querySelector('[role="tablist"]')!.addEventListener('keydown', (event) => {
+				const key = (event as KeyboardEvent).key;
+				const current = tabs.findIndex((tab) => tab.tabIndex === 0);
+				let index = -1;
+				if (key === 'ArrowRight') index = (current + 1) % tabs.length;
+				else if (key === 'ArrowLeft') index = (current - 1 + tabs.length) % tabs.length;
+				else if (key === 'Home') index = 0;
+				else if (key === 'End') index = tabs.length - 1;
+				if (index < 0) return;
+				event.preventDefault();
+				select(index, true);
+			});
+		});
+	}
+
+	setup();
+	setupTabs(document);
+	document.addEventListener('astro:page-load', () => {
+		setup();
+		setupTabs(document);
+	});
+</script>

@@ -2,6 +2,7 @@
 import type { CollectionEntry } from "astro:content";
 import FormattedDate from "~/components/FormattedDate.astro";
 import HeadingFragments from "~/components/HeadingFragments.astro";
+import MermaidDiagrams from "~/components/MermaidDiagrams.astro";
 import BaseLayout from "~/layouts/BaseLayout.astro";
 import { tagSlug } from "~/lib/tags";
 
@@ -66,4 +67,5 @@ const { title, description, pubDate, updatedDate, tags = [] } = Astro.props;
   </article>
 
   <HeadingFragments />
+  <MermaidDiagrams />
 </BaseLayout>

@@ -358,6 +358,15 @@ a.chip-series:hover {
 	font-family: var(--font-sans);
 }
 
+/*
+ * Typography wraps blockquotes in curly quotes via `content: open-quote` on the
+ * first and last paragraph. `quotes: none` makes those resolve to nothing, so
+ * quotation marks are only ever the ones actually typed in the source.
+ */
+.prose blockquote {
+	quotes: none;
+}
+
 /* Keep everything code-shaped on the monospace family, inside prose or not. */
 .prose :is(code, kbd, samp, pre),
 .prose .expressive-code :is(code, pre) {
@@ -482,6 +491,185 @@ a.chip-series:hover {
 	.ec-file-icon
 	path {
 	fill: #dea584;
+}
+
+/* ---------------------------------------------------------------------------
+   Mermaid
+   Containers come from plugins/rehype-mermaid-blocks.mjs; the SVG is drawn by
+   MermaidDiagrams.astro once the diagram nears the viewport.
+   ------------------------------------------------------------------------- */
+
+.mermaid-figure {
+	margin-block: 1.5rem;
+	/* Reserved by the plugin, so the skeleton occupies the space the diagram
+	   will take and the SVG arriving causes no reflow. */
+	min-height: var(--mermaid-min-height, 220px);
+}
+
+.mermaid-figure[data-mermaid-state='ready'] {
+	min-height: 0;
+}
+
+/* Same treatment as the shadcn Skeleton component: `bg-accent animate-pulse
+   rounded-md`, written out because this markup is built in rehype, not Svelte. */
+.mermaid-skeleton {
+	height: var(--mermaid-min-height, 220px);
+	border-radius: var(--radius-md);
+	background-color: var(--color-accent);
+	animation: mermaid-skeleton-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes mermaid-skeleton-pulse {
+	50% {
+		opacity: 0.5;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.mermaid-skeleton {
+		animation: none;
+	}
+}
+
+/* The source is the fallback: shown only when there is no script to draw the
+   diagram, or when drawing it failed. */
+.mermaid-source {
+	display: none;
+}
+
+@media (scripting: none) {
+	.mermaid-skeleton {
+		display: none;
+	}
+
+	.mermaid-source {
+		display: block;
+	}
+}
+
+.mermaid-figure:is([data-mermaid-state='ready'], [data-mermaid-state='error'])
+	.mermaid-skeleton {
+	display: none;
+}
+
+.mermaid-figure[data-mermaid-state='error'] .mermaid-source {
+	display: block;
+}
+
+.mermaid-output svg {
+	display: block;
+	max-width: 100%;
+	height: auto;
+	margin-inline: auto;
+}
+
+/* Matches the caption styling used under code blocks. */
+.mermaid-caption {
+	margin-block-start: 0.6rem;
+	padding-inline-start: 0.75rem;
+	border-inline-start: 2px solid var(--color-border);
+	color: var(--color-muted-foreground);
+	font-family: var(--font-sans);
+	font-size: 0.8125rem;
+	line-height: 1.55;
+	text-wrap: pretty;
+}
+
+.mermaid-caption code {
+	font-family: var(--font-mono);
+	font-size: 0.925em;
+	color: var(--color-foreground);
+}
+
+.mermaid-caption a {
+	color: inherit;
+	text-decoration: underline;
+	text-underline-offset: 2px;
+}
+
+/* A frame is on by default for titled or tabbed diagrams, off otherwise; the
+   `border` fence option overrides either way. */
+.mermaid-figure[data-framed] {
+	border: 1px solid var(--color-border);
+	border-radius: var(--radius-md);
+	padding: 1rem;
+	background-color: var(--color-card);
+}
+
+.diagram-title {
+	margin: -1rem -1rem 1rem;
+	padding: 0.5rem 1rem;
+	border-bottom: 1px solid var(--color-border);
+	border-start-start-radius: var(--radius-md);
+	border-start-end-radius: var(--radius-md);
+	color: var(--color-muted-foreground);
+	font-family: var(--font-sans);
+	font-size: 0.8125rem;
+	font-weight: 600;
+}
+
+/* Tabs. Built in rehype; the script only switches them. */
+.diagram-tabs {
+	margin-block: 1.5rem;
+	width: 100%;
+	max-width: 100%;
+	min-width: 0;
+	border: 1px solid var(--color-border);
+	border-radius: var(--radius-md);
+	background-color: var(--color-card);
+}
+
+.diagram-tablist {
+	display: flex;
+	min-width: 0;
+	max-width: 100%;
+	overflow-x: auto;
+	overscroll-behavior-x: contain;
+	scrollbar-width: none;
+	border-bottom: 1px solid var(--color-border);
+}
+
+.diagram-tablist::-webkit-scrollbar {
+	display: none;
+}
+
+.diagram-tablist > button {
+	flex: none;
+	margin: 0;
+	padding: 0.5rem 1rem;
+	border: none;
+	border-bottom: 2px solid transparent;
+	background: none;
+	color: var(--color-muted-foreground);
+	font-family: var(--font-sans);
+	font-size: 0.8125rem;
+	font-weight: 600;
+	white-space: nowrap;
+	cursor: pointer;
+	transition: color 0.15s;
+}
+
+.diagram-tablist > button:hover {
+	color: var(--color-foreground);
+}
+
+.diagram-tablist > button[aria-selected='true'] {
+	color: var(--color-foreground);
+	border-bottom-color: var(--color-primary);
+}
+
+.diagram-tablist > button:focus-visible {
+	outline: 2px solid var(--color-primary);
+	outline-offset: -2px;
+}
+
+.diagram-tabpanel {
+	min-width: 0;
+	padding: 1rem;
+}
+
+.diagram-tabpanel > .mermaid-figure {
+	margin-block: 0;
 }
 
 /* ---------------------------------------------------------------------------
