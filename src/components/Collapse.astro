@@ -1,0 +1,41 @@
+---
+// Opt-in collapsible block for material a reader can skip — a derivation, a
+// proof, an aside. Closed by default, since the point is to signal "skippable".
+//
+//   import Collapse from "~/components/Collapse.astro";
+//
+//   <Collapse summary="Why majorities must intersect">
+//     ...
+//   </Collapse>
+//
+// `open` starts it expanded. `border` frames it; without it the block is bare.
+
+interface Props {
+  summary: string;
+  open?: boolean;
+  border?: boolean;
+}
+
+const { summary, open = false, border = false } = Astro.props;
+---
+
+<details class="collapse-block" open={open} data-border={border || undefined}>
+  <summary>
+    <svg
+      class="collapse-marker"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2.25"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <polyline points="9 5 16 12 9 19"></polyline>
+    </svg>
+    <span>{summary}</span>
+  </summary>
+  <div class="collapse-body">
+    <slot />
+  </div>
+</details>

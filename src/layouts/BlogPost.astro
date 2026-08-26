@@ -2,15 +2,32 @@
 import type { CollectionEntry } from "astro:content";
 import FormattedDate from "~/components/FormattedDate.astro";
 import HeadingFragments from "~/components/HeadingFragments.astro";
+import TableOfContents from "~/components/TableOfContents.astro";
 import MermaidDiagrams from "~/components/MermaidDiagrams.astro";
 import BaseLayout from "~/layouts/BaseLayout.astro";
 import { tagSlug } from "~/lib/tags";
 
 // Only ever rendered from blog/[...slug].astro with collection data.
-type Props = CollectionEntry<"blog">["data"];
+type SeriesLink = { title: string; href: string; part?: number };
 
-const { title, description, pubDate, updatedDate, tags, series, seriesPart } =
-  Astro.props;
+type Props = CollectionEntry<"blog">["data"] & {
+  headings?: { depth: number; slug: string; text: string }[];
+  seriesPrev?: SeriesLink;
+  seriesNext?: SeriesLink;
+};
+
+const {
+  title,
+  description,
+  pubDate,
+  updatedDate,
+  tags,
+  series,
+  seriesPart,
+  headings = [],
+  seriesPrev,
+  seriesNext,
+} = Astro.props;
 ---
 
 <BaseLayout title={title} description={description}>
@@ -82,6 +99,12 @@ const { title, description, pubDate, updatedDate, tags, series, seriesPart } =
     </div>
   </article>
 
+  <TableOfContents
+    headings={headings}
+    series={series}
+    prev={seriesPrev}
+    next={seriesNext}
+  />
   <HeadingFragments />
   <MermaidDiagrams />
 </BaseLayout>

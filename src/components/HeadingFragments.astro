@@ -55,6 +55,15 @@
 			if (id === current) return;
 			current = id;
 
+			// The table of contents highlights the same heading, so it reads the
+			// result here rather than running a second scroll listener.
+			for (const link of document.querySelectorAll('[data-toc-link]')) {
+				const active = link.dataset.tocLink === id;
+				link.toggleAttribute('data-toc-active', active);
+				if (active) link.setAttribute('aria-current', 'true');
+				else link.removeAttribute('aria-current');
+			}
+
 			// `replaceState` rather than assigning `location.hash`: it neither
 			// scrolls the page nor adds an entry to the back stack, so the back
 			// button still leaves the article in one press.

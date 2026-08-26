@@ -1,0 +1,153 @@
+---
+// Sticky table of contents. On wide viewports it sits in the left margin beside
+// the article; below that it collapses to a floating button that opens a panel.
+//
+// The active entry is highlighted by HeadingFragments.astro, which already
+// tracks the current heading for the URL fragment — no second scroll listener.
+
+interface Heading {
+  depth: number;
+  slug: string;
+  text: string;
+}
+
+interface SeriesLink {
+  title: string;
+  href: string;
+  part?: number;
+}
+
+interface Props {
+  headings: Heading[];
+  /** Deepest level to list. 2 lists only `##`, 6 lists everything. */
+  maxDepth?: number;
+  series?: string;
+  prev?: SeriesLink;
+  next?: SeriesLink;
+}
+
+const { headings, maxDepth = 4, series, prev, next } = Astro.props;
+
+const entries = headings.filter(
+  (heading: Heading) => heading.depth >= 2 && heading.depth <= maxDepth,
+);
+
+const hasContents = entries.length > 1;
+const hasSeries = Boolean(prev || next);
+---
+
+{
+  (hasContents || hasSeries) && (
+    <>
+      <nav id="toc" class="toc" aria-label="Table of contents">
+        {hasContents && (
+          <>
+            <p class="toc-title">Contents</p>
+            <ol class="toc-list">
+              {entries.map((heading: Heading) => (
+                <li class="toc-item" data-depth={heading.depth}>
+                  <a href={`#${heading.slug}`} data-toc-link={heading.slug}>
+                    {heading.text}
+                  </a>
+                </li>
+              ))}
+            </ol>
+          </>
+        )}
+
+        {hasSeries && (
+          <div class="toc-series">
+            <p class="toc-title">{series ?? "Series"}</p>
+
+            {prev && (
+              <a class="toc-series-link" href={prev.href} rel="prev">
+                <span class="toc-series-dir">&larr; Previous</span>
+                <span class="toc-series-name">
+                  {prev.part && <span class="toc-series-part">{prev.part}.</span>}
+                  {prev.title}
+                </span>
+              </a>
+            )}
+
+            {next && (
+              <a class="toc-series-link" href={next.href} rel="next">
+                <span class="toc-series-dir">Next &rarr;</span>
+                <span class="toc-series-name">
+                  {next.part && <span class="toc-series-part">{next.part}.</span>}
+                  {next.title}
+                </span>
+              </a>
+            )}
+          </div>
+        )}
+      </nav>
+
+      <button
+        id="toc-toggle"
+        type="button"
+        class="toc-toggle"
+        aria-expanded="false"
+        aria-controls="toc"
+        aria-label="Table of contents"
+      >
+        <svg
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          aria-hidden="true"
+        >
+          <line x1="8" y1="6" x2="21" y2="6" />
+          <line x1="8" y1="12" x2="21" y2="12" />
+          <line x1="8" y1="18" x2="21" y2="18" />
+          <line x1="3" y1="6" x2="3.01" y2="6" />
+          <line x1="3" y1="12" x2="3.01" y2="12" />
+          <line x1="3" y1="18" x2="3.01" y2="18" />
+        </svg>
+      </button>
+
+      <script is:inline>
+        (() => {
+          const toc = document.getElementById("toc");
+          const toggle = document.getElementById("toc-toggle");
+          if (!toc || !toggle) return;
+
+          // Both are `position: fixed`, which silently degrades to positioning
+          // against an ancestor if any of them ever gains a transform, filter
+          // or containment — the symptom being a panel pinned to the bottom of
+          // the article instead of the viewport. Reparenting to <body> puts
+          // them beyond the reach of anything the layout does.
+          document.body.append(toc, toggle);
+
+          const setOpen = (open) => {
+            toc.classList.toggle("is-open", open);
+            toggle.setAttribute("aria-expanded", String(open));
+          };
+
+          toggle.addEventListener("click", () =>
+            setOpen(!toc.classList.contains("is-open")),
+          );
+
+          // Following a link closes the panel; on wide viewports the panel is
+          // always visible and the class is inert.
+          toc.addEventListener("click", (event) => {
+            if (event.target.closest("a")) setOpen(false);
+          });
+
+          document.addEventListener("keydown", (event) => {
+            if (event.key === "Escape") setOpen(false);
+          });
+
+          document.addEventListener("pointerdown", (event) => {
+            if (!toc.contains(event.target) && !toggle.contains(event.target)) {
+              setOpen(false);
+            }
+          });
+        })();
+      </script>
+    </>
+  )
+}

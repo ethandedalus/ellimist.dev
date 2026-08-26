@@ -12,9 +12,40 @@ export async function getStaticPaths() {
 type Props = CollectionEntry<'blog'>;
 
 const post = Astro.props;
-const { Content } = await render(post);
+const { Content, headings } = await render(post);
+
+// Neighbours within the same series, for the table of contents. Ordered by
+// `seriesPart`, which the schema requires whenever `series` is set.
+const link = (entry: CollectionEntry<'blog'>) => ({
+	title: entry.data.title,
+	href: `/blog/${entry.id}/`,
+	part: entry.data.seriesPart,
+});
+
+let seriesPrev: ReturnType<typeof link> | undefined;
+let seriesNext: ReturnType<typeof link> | undefined;
+
+if (post.data.series) {
+	const siblings = (
+		await getCollection(
+			'blog',
+			({ data }) => !data.draft && data.series === post.data.series,
+		)
+	).sort((a, b) => (a.data.seriesPart ?? 0) - (b.data.seriesPart ?? 0));
+
+	const index = siblings.findIndex((entry) => entry.id === post.id);
+	if (index > 0) seriesPrev = link(siblings[index - 1]);
+	if (index >= 0 && index < siblings.length - 1) {
+		seriesNext = link(siblings[index + 1]);
+	}
+}
 ---
 
-<BlogPost {...post.data}>
+<BlogPost
+	{...post.data}
+	headings={headings}
+	seriesPrev={seriesPrev}
+	seriesNext={seriesNext}
+>
 	<Content />
 </BlogPost>
