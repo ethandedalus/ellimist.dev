@@ -218,6 +218,13 @@
 	background-color: color-mix(in oklab, var(--color-chip-note) 10%, transparent);
 }
 
+/* Only ever rendered in development; production builds omit drafts entirely.
+   Deliberately louder than the other two — it marks work that isn't shipped. */
+.chip-kind-draft {
+	color: var(--color-destructive);
+	background-color: color-mix(in oklab, var(--color-destructive) 12%, transparent);
+}
+
 /* ---------------------------------------------------------------------------
    Tag links
 

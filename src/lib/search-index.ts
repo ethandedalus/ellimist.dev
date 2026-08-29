@@ -1,7 +1,7 @@
 // Server-only: imports `astro:content`. Never import this from a Svelte island.
 import { createHash } from 'node:crypto';
 import { getCollection } from 'astro:content';
-import { tagSlug, type SearchDoc, type SearchIndexPayload } from '~/lib/types';
+import { tagSlug, type SearchDoc, type SearchIndexPayload, isVisible } from '~/lib/types';
 
 /** Cap per document, so one long article can't dominate the index payload. */
 const MAX_TEXT_LENGTH = 8000;
@@ -45,8 +45,8 @@ export async function getSearchIndex(): Promise<SearchIndexPayload> {
 	if (cached) return cached;
 
 	const [posts, notes] = await Promise.all([
-		getCollection('blog', ({ data }) => !data.draft),
-		getCollection('notes', ({ data }) => !data.draft),
+		getCollection('blog', isVisible),
+		getCollection('notes', isVisible),
 	]);
 
 	const docs: SearchDoc[] = [
@@ -63,6 +63,7 @@ export async function getSearchIndex(): Promise<SearchIndexPayload> {
 			series: post.data.series,
 			seriesSlug: post.data.series ? tagSlug(post.data.series) : undefined,
 			seriesPart: post.data.seriesPart,
+			draft: post.data.draft,
 			text: toPlainText(post.body ?? ''),
 		})),
 		...notes.map((note) => ({
@@ -73,6 +74,7 @@ export async function getSearchIndex(): Promise<SearchIndexPayload> {
 			description: note.data.description,
 			pubDate: note.data.pubDate.toISOString(),
 			dateLabel: formatDate(note.data.pubDate),
+			draft: note.data.draft,
 			tags: note.data.tags,
 			tagSlugs: note.data.tags.map(tagSlug),
 			text: toPlainText(note.body ?? ''),

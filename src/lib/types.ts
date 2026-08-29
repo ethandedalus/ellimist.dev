@@ -2,6 +2,17 @@
 // Svelte islands import from here, and a server-only import in this module
 // graph stops them hydrating in the browser.
 
+/**
+ * Drafts are listed while developing and never in a production build, so
+ * unfinished work is reachable locally without leaking into the deployed site.
+ */
+export const SHOW_DRAFTS = import.meta.env.DEV;
+
+/** Collection filter matching everything that should be visible right now. */
+export function isVisible({ data }: { data: { draft?: boolean } }): boolean {
+	return SHOW_DRAFTS || !data.draft;
+}
+
 /** A post or note, flattened so both collections can be listed together. */
 export interface TaggedItem {
 	kind: 'blog' | 'notes';
@@ -18,6 +29,8 @@ export interface TaggedItem {
 	seriesSlug?: string;
 	/** Position within the series. Only set alongside `series`. */
 	seriesPart?: number;
+	/** Only ever true in development — production builds exclude drafts. */
+	draft?: boolean;
 }
 
 /** A filterable value with its usage count. Used for both tags and series. */

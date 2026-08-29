@@ -8,15 +8,16 @@ import {
   SITE_TITLE,
 } from "~/consts";
 import BaseLayout from "~/layouts/BaseLayout.astro";
+import { isVisible } from "~/lib/types";
 
 // Renders up to HOME_SECTION_MAX entries but only shows HOME_SECTION_SIZE.
 // "See more" reveals the rest in batches — the markup is already on the page,
 // so there's no fetch and it works the moment the button is clickable.
-const posts = (await getCollection("blog", ({ data }) => !data.draft))
+const posts = (await getCollection("blog", isVisible))
   .sort((a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf())
   .slice(0, HOME_SECTION_MAX);
 
-const notes = (await getCollection("notes", ({ data }) => !data.draft))
+const notes = (await getCollection("notes", isVisible))
   .sort((a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf())
   .slice(0, HOME_SECTION_MAX);
 ---

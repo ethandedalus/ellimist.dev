@@ -1,7 +1,7 @@
 // Server-only: this imports `astro:content`. Islands must import types and
 // `tagSlug` from `~/lib/types` instead, never from here.
 import { getCollection } from 'astro:content';
-import { tagSlug, type TaggedItem } from '~/lib/types';
+import { tagSlug, type TaggedItem, isVisible } from '~/lib/types';
 
 export { tagSlug, type TaggedItem };
 
@@ -20,8 +20,8 @@ function formatDate(date: Date): string {
  */
 export async function getTaggedItems(): Promise<TaggedItem[]> {
 	const [posts, notes] = await Promise.all([
-		getCollection('blog', ({ data }) => !data.draft),
-		getCollection('notes', ({ data }) => !data.draft),
+		getCollection('blog', isVisible),
+		getCollection('notes', isVisible),
 	]);
 
 	const items: TaggedItem[] = [
@@ -36,6 +36,7 @@ export async function getTaggedItems(): Promise<TaggedItem[]> {
 			series: post.data.series,
 			seriesSlug: post.data.series ? tagSlug(post.data.series) : undefined,
 			seriesPart: post.data.seriesPart,
+			draft: post.data.draft,
 		})),
 		...notes.map((note) => ({
 			kind: 'notes' as const,
@@ -44,6 +45,7 @@ export async function getTaggedItems(): Promise<TaggedItem[]> {
 			description: note.data.description,
 			pubDate: note.data.pubDate.toISOString(),
 			dateLabel: formatDate(note.data.pubDate),
+			draft: note.data.draft,
 			tags: note.data.tags,
 		})),
 	];

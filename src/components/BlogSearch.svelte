@@ -237,6 +237,9 @@
 									>
 										{item.kind === 'blog' ? 'post' : 'note'}
 									</span>
+									{#if item.draft}
+										<span class="chip-kind chip-kind-draft">draft</span>
+									{/if}
 									<span class="text-muted-foreground font-mono text-xs tabular-nums">
 										{item.dateLabel}
 									</span>

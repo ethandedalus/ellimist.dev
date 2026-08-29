@@ -3,8 +3,9 @@ import { getCollection } from "astro:content";
 import FormattedDate from "~/components/FormattedDate.astro";
 import { SITE_TITLE } from "~/consts";
 import BaseLayout from "~/layouts/BaseLayout.astro";
+import { isVisible } from "~/lib/types";
 
-const notes = (await getCollection("notes", ({ data }) => !data.draft)).sort(
+const notes = (await getCollection("notes", isVisible)).sort(
   (a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf(),
 );
 ---

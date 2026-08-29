@@ -111,30 +111,48 @@ const hasSeries = Boolean(prev || next);
 
       <script is:inline>
         (() => {
-          const toc = document.getElementById("toc");
-          const toggle = document.getElementById("toc-toggle");
-          if (!toc || !toggle) return;
+          // Astro's router keys inline scripts by their text and refuses to run
+          // one it has already seen, so this executes on the first post only.
+          // Everything below therefore has to survive navigation on its own:
+          // one instance, listeners on `document`, elements looked up per event
+          // rather than captured, and a remount on every page load.
+          if (window.__tocReady) return;
+          window.__tocReady = true;
+
+          const panel = () => document.getElementById("toc");
+          const button = () => document.getElementById("toc-toggle");
+
+          const setOpen = (open) => {
+            const toc = panel();
+            const toggle = button();
+            if (!toc || !toggle) return;
+            toc.classList.toggle("is-open", open);
+            toggle.setAttribute("aria-expanded", String(open));
+          };
 
           // Both are `position: fixed`, which silently degrades to positioning
           // against an ancestor if any of them ever gains a transform, filter
           // or containment — the symptom being a panel pinned to the bottom of
           // the article instead of the viewport. Reparenting to <body> puts
           // them beyond the reach of anything the layout does.
-          document.body.append(toc, toggle);
-
-          const setOpen = (open) => {
-            toc.classList.toggle("is-open", open);
-            toggle.setAttribute("aria-expanded", String(open));
+          const mount = () => {
+            const toc = panel();
+            const toggle = button();
+            if (toc && toggle) document.body.append(toc, toggle);
           };
 
-          toggle.addEventListener("click", () =>
-            setOpen(!toc.classList.contains("is-open")),
-          );
+          document.addEventListener("click", (event) => {
+            const target = event.target;
+            if (!(target instanceof Element)) return;
 
-          // Following a link closes the panel; on wide viewports the panel is
-          // always visible and the class is inert.
-          toc.addEventListener("click", (event) => {
-            if (event.target.closest("a")) setOpen(false);
+            if (target.closest("#toc-toggle")) {
+              setOpen(!panel()?.classList.contains("is-open"));
+              return;
+            }
+
+            // Following a link closes the panel; on wide viewports the panel is
+            // always visible and the class is inert.
+            if (target.closest("#toc a")) setOpen(false);
           });
 
           document.addEventListener("keydown", (event) => {
@@ -142,10 +160,16 @@ const hasSeries = Boolean(prev || next);
           });
 
           document.addEventListener("pointerdown", (event) => {
+            const toc = panel();
+            const toggle = button();
+            if (!toc || !toggle) return;
             if (!toc.contains(event.target) && !toggle.contains(event.target)) {
               setOpen(false);
             }
           });
+
+          mount();
+          document.addEventListener("astro:page-load", mount);
         })();
       </script>
     </>

@@ -1,11 +1,12 @@
 import rss from '@astrojs/rss';
 import { getCollection } from 'astro:content';
 import { SITE_DESCRIPTION, SITE_TITLE } from '~/consts';
+import { isVisible } from '~/lib/types';
 
 export async function GET(context) {
 	const [posts, notes] = await Promise.all([
-		getCollection('blog', ({ data }) => !data.draft),
-		getCollection('notes', ({ data }) => !data.draft),
+		getCollection('blog', isVisible),
+		getCollection('notes', isVisible),
 	]);
 
 	const items = [

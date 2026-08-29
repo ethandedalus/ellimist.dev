@@ -47,6 +47,7 @@ const version = await getSearchIndexVersion();
                   >
                     {item.kind === "blog" ? "post" : "note"}
                   </span>
+                  {item.draft && <span class="chip-kind chip-kind-draft">draft</span>}
                   <span class="text-muted-foreground font-mono text-xs tabular-nums">
                     <FormattedDate date={new Date(item.pubDate)} />
                   </span>

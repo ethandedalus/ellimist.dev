@@ -1,0 +1,51 @@
+---
+title: "A Paxos State Machine"
+description: "Effectively designing a state machine for Paxos"
+pubDate: "August 24, 2026"
+tags:
+  - paxos
+draft: true
+---
+
+In this post I want to work through designing a state machine for an "instance" of Paxos. 
+
+## An Instance of Paxos
+
+A proposer, which we will refer to as _instance_ or _instance of Paxos_ going forward, is not mandated by the protocol to durably store any state, but in any real implementation, the instance will contain _some_ local state. In our example, we will assume that the instance contains the following mutable data members:
+
+- `ballot`: the current proposal number it is proposing with
+- `value`: the value that this proposer is to propose 
+- `wait`: the base time that this proposer is to wait before starting to execute Paxos
+
+Modeling this in Haskell is fairly simple:
+
+```haskell
+data Ballot = Ballot { round :: Int, nodeID :: Int } 
+data Instance a = Instance {currentBallot :: Ballot, value :: a }
+```
+
+An instance of Paxos moves between a set of states, starting from when it is created and ending when the value is learned. A preliminary set of states we can use are as follows:
+
+- `Idle`: when an instance is first created, or when it is backing off. This is the starting state.
+- `Preparing`: when an instance is executing phase one of Paxos
+- `Accepting`: when an instance is executing phase two of Paxos
+- `Learned`: when an instance has learned the chosen value. This is the ending state.
+
+Different events trigger state transitions. A preliminary set of events we can use are as follows:
+
+- `P1PeerHasAcceptedValue`: This event triggers a state transition `Preparing` → `Accepting`. It has the side effect of modifying the instance's state by updating the value to the accepted value (associated with the highest accepted ballot).
+- `P1NoPeerHasAcceptedValue`: This event triggers a state transition `Preparing` → `Accepting`. It has no side effect.
+- `P1Error`: This event triggers a state transition `Preparing` → `Idle`. It has the side effect of incrementing the instance's ballot's round by one, and increasing the wait time.
+- `P2QuorumAccepted`: This event triggers a state transition `Accepting` → `Learned`.
+- `P2NoQuorumAccepted`: This event triggers a state transition `Accepting` → `Preparing`. It has the side effects of fast forwarding the instance's ballot, if at least one response was received (incrementing it otherwise), and also of increasing the wait time.
+
+
+
+
+
+
+
+
+
+
+

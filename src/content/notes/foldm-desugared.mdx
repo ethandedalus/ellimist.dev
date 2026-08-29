@@ -1,0 +1,15 @@
+---
+title: "Desugaring foldM in Haskell"
+description: "Desugaring a useful Haskell combinator"
+pubDate: "August 29 2026"
+tags:
+  - haskell
+  - functional-programming
+---
+
+The function `foldM` from `Control.Monad` (or equivalently `foldlM` from `Data.Foldable`) desugars to
+
+```haskell
+foldlm _ z [] = pure z
+foldlm f z (x : xs) = f z x >>= \z' -> foldlm f z' xs
+```

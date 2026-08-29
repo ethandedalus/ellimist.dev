@@ -1,9 +1,10 @@
 ---
 import { type CollectionEntry, getCollection, render } from 'astro:content';
 import BlogPost from '../../layouts/BlogPost.astro';
+import { isVisible } from '~/lib/types';
 
 export async function getStaticPaths() {
-	const posts = await getCollection('blog');
+	const posts = await getCollection('blog', isVisible);
 	return posts.map((post) => ({
 		params: { slug: post.id },
 		props: post,
@@ -29,7 +30,7 @@ if (post.data.series) {
 	const siblings = (
 		await getCollection(
 			'blog',
-			({ data }) => !data.draft && data.series === post.data.series,
+			(entry) => isVisible(entry) && entry.data.series === post.data.series,
 		)
 	).sort((a, b) => (a.data.seriesPart ?? 0) - (b.data.seriesPart ?? 0));
 
