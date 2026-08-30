@@ -12,4 +12,4 @@ The function `foldM` from `Control.Monad` (or equivalently `foldlM` from `Data.F
 ```haskell
 foldlm _ z [] = pure z
 foldlm f z (x : xs) = f z x >>= \z' -> foldlm f z' xs
-```
+``` 
