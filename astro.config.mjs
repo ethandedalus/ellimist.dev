@@ -97,6 +97,10 @@ export default defineConfig({
             fallbacks: ['ui-monospace', 'SFMono-Regular', 'monospace'],
             weights: [400, 700],
             styles: ['normal'],
+            // Astro only ships the `latin` subset by default, which stops at
+            // U+00FF. Code samples use Greek letters (λ), so pull that subset
+            // in too or they fall back to Courier New.
+            subsets: ['latin', 'greek'],
         },
     ],
 
