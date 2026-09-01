@@ -15,7 +15,9 @@ The `call/cc` function saves the stack at the moment it's called, handing you a 
 The following code uses it to implement a loop.
 
 ```racket title="main.rkt"
-(let-values ([(loop n) (call/cc (lambda (k) (values k 0)))])
+#lang racket
+
+(let-values ([(loop n) (call/cc (λ (k) (values k 0)))])
   (displayln n)
   (when (< n 5)
     (loop loop (+ n 1))))
