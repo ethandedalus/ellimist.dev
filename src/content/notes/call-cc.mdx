@@ -1,0 +1,26 @@
+---
+title: "How call/cc Enables Creation of Control Structures"
+description: "Implementing a loop with call/cc in racket"
+pubDate: "August 31 2026"
+tags:
+  - racket
+  - functional-programming
+---
+
+The `call/cc` function saves the stack at the moment it's called, handing you a (magic) function (called `k` here) that provides you with the ability to do two things:
+
+- Set the return value of `call/cc`
+- Rewind the stack to what it looked like at the point in time when `call/cc` was invoked.
+
+The following code uses it to implement a loop.
+
+```racket title="main.rkt"
+(let-values ([(loop n) (call/cc (lambda (k) (values k 0)))])
+  (displayln n)
+  (when (< n 5)
+    (loop loop (+ n 1))))
+```
+
+We bind `loop` and `n` to be the _spacetime traveler_ and loop counter respectively, and then we write the body: `(displayln n)`. The last bit is the condition, which uses the spacetime traveler to rewind back to where `loop` and `n` were bound, and provide new values for them; `loop` is passed unchanged, and `n` is passed incremented.
+
+I expect to be writing some full length posts on continuations, CPS, and the `ContT` monad transformer soon. Stay tuned!
