@@ -1,0 +1,53 @@
+---
+title: "Continuation Primitives in Racket"
+description: "Showcasing the continuation primitives that racket offers"
+pubDate: "September 1, 2026"
+tags:
+  - racket
+  - functional-programming
+draft: true
+---
+
+`call-with-continuation-prompt` is a runtime supported continuation primitive that takes three things: a function, a tag, and an optional handler. Paired with `abort-current-continuation`, you can do things like simulate exceptions. Consider the following program
+
+```racket title="main.rkt"
+#lang racket
+
+(define exn-tag (make-continuation-prompt-tag 'exn))
+
+(define (throw kind msg)
+  (abort-current-continuation exn-tag kind msg))
+
+(define (parse-config _)
+  (displayln "parsing config")
+  (throw 'parse-error "bad token on line 42")
+  (displayln "unreachable"))
+
+;; inner try: handles io-error only, and rethrows everything else
+(define (load-config path)
+  (call-with-continuation-prompt
+    (λ ()
+      (printf "loading ~a\n" path)
+      (parse-config path))
+    exn-tag
+    (λ (kind msg)
+      (case kind
+        [(io-error) (displayln "load-config: using defaults") 'defaults]
+        [else (throw kind msg)]))))
+
+;; outer try: catches whatever escapes load-config
+(define (start-server)
+  (call-with-continuation-prompt
+    (λ ()
+      (define cfg (load-config ".env"))
+      (printf "starting with ~a\n" cfg)
+      'running)
+    exn-tag
+    (λ (kind msg)
+      (printf "start-server aborted, ~a: ~a\n" kind msg)
+      'failed)))
+
+(start-server)
+```
+
+This is code for some fictional server that attempts to load some config and start. `start-server` calls `call-with-continuation-prompt` with a startup function that attempts to load some configuration and start. `load-config` attempts to actually load the file and then parse it. If loading fails (which never happens in this program), then attempts to parse the config. Parsing the config always fails, throwing a `'parse-error` with a message. The handler is called in `load-config`, but since it's not an `io-error`, the exception is instead rethrown and caught in `start-server` which logs an error and dies. If you squint a little, `call-with-continuation-prompt` looks like `try`, with the first lambda being the try block and the handler being the catch block.

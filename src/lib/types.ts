@@ -72,3 +72,28 @@ export function tagSlug(tag: string): string {
 		.replace(/[^a-z0-9]+/g, '-')
 		.replace(/^-+|-+$/g, '');
 }
+
+/**
+ * One bibliography entry. `id` is the anchor an inline citation links to, so
+ * it has to be unique within a post and stable once published.
+ *
+ * Every field but `id` and `title` is optional — a handout with no named
+ * author or a blog post with no venue still formats correctly.
+ */
+export interface Reference {
+	id: string;
+	/** In the order they should be credited. Rendered as written, never abbreviated. */
+	authors?: string[];
+	title: string;
+	/** Journal, conference, site, or course the work appeared in. Italicized. */
+	container?: string;
+	publisher?: string;
+	year?: number | string;
+	/** Linked from the title. Falls back to the DOI when absent. */
+	url?: string;
+	doi?: string;
+	/** Anything the fields above can't carry, e.g. "Preprint". */
+	note?: string;
+	/** For sources that can change under you. */
+	accessed?: string;
+}

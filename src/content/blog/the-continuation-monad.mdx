@@ -1,0 +1,84 @@
+---
+title: "The Continuation Monad"
+description: "How the continuation monad allows the construction of advanced control flow"
+pubDate: "September 5, 2026"
+tags:
+  - haskell
+  - functional-programming
+draft: true
+---
+
+Today I want to talk about continuations. Continuations are rather difficult to understand from just a first pass, and most of the literature around them is difficult to navigate, so I want to take the time here to explain them in a way I think is understandable.
+
+## What is A Continuation, Really?
+
+Abstractly, a continuation of a function ζ is _the rest of the program_. ζ can be in any programming language. When ζ is run, a stack frame is created for it and space is allocated for local variables in some way. Consider all of this to be ζ's "local data". As the function runs, its local data may change in response to statements (for example, if `x` is a local variable, `x += 1` mutates that variable). Suppose statements in a function in a particular programming language are delimited by semicolons. Let ζ have `N` statements. After the first `X < N` statements are run, there are `N - X` statements left to run. You can view "the rest of the program" as those remaining `N - X` statements — in addition to ζ's caller's remainder and so on until you reach `main` (or equivalent) — packaged together with the _live_ environment after the first `X` statements are run. There are many implementation strategies for "the environment" I just mentioned, one of which is a _stack snapshot_. Another is a closure which implicitly captures its environment. In either case, packaging an environment along with a function that takes the value produced at the point where ζ left off and executes the rest of the program with it is the _continuation_ λ of the function. This last sentence can be hard to follow, so consider the following example, imagining for a minute we have the ability to break functions into parts like mentioned earlier.
+
+```go title="main.go" group="fig1.1"
+func z() {
+    x = f(); // statement 1
+    y = g(); // statement 2
+    // ---- break the function here ----
+    return x + y; // statement 3
+}
+---
+The continuation is `λ(). return x + y`. The variables `x` and `y` are already bound in the environment, so the continuation takes no value.
+---
+```
+
+```go title="main.go" group="fig1.1"
+func z() {
+    x = f(); // statement 1
+    return x + g(); // statement 2
+              // ^ insert a break somewhere inside g 
+}
+---
+The continuation is `λv. return x + v`. The variable `v` is g's return value, which is not bound since the function yielded in the middle of the assignment. The remainder of `g` + the remainder of `z` + the remainder of any callers above `z` is the "rest of the program" as viewed by `g`.
+---
+```
+
+## Representing a Continuation
+
+As mentioned previously, we could represent a continuation of a computation with a stack snapshot and a function that takes a value and executes the rest of the computation. This is common in lower level languages. In higher level languages a continuation is more neatly represented as a closure which implicitly has access to the environment it needs. We will be working in Haskell going forward, so we will choose the second representation. Consider that "the rest of the computation" may return a value of some type. Then we can say _**k: a → r**_, where _**a**_ and _**r**_ are type variables, is the type of a continuation in Haskell.
+
+
+## Transforming a Program
+
+Let's illustrate how to transforma a direct style program into continuation passing style. The transformation is procedural and can be accomplished by applying the following rules:
+
+- A function `f :: a -> b` becomes `f :: a -> (b -> r) -> r`. The `b -> r` is the continuation. 
+- A function whose body is an expression _**e**_ like _**f x<sub>1</sub> x<sub>2</sub> ... x<sub>n</sub> = e**_ becomes _**f x<sub>1</sub> x<sub>2</sub> ... x<sub>n</sub> k = k e**_ 
+- Every call in an evaluation context `E[⋅]` must be lifted. An expression `E[g y]` becomes `g y (\v -> E[v])`.
+
+```haskell title="direct.hs" group="fig2.1"
+double :: Int -> Int
+double x = 2 * x
+
+addOne :: Int -> Int
+addOne x = x + 1
+
+main :: IO ()
+main = print (addOne (double 5))
+```
+
+```haskell title="cps.hs" group="fig2.1"
+double :: Int -> (Int -> r) -> r
+double x k = k (2 * x)
+
+addOne :: Int -> (Int -> r) -> r
+addOne x k = k (x + 1)
+
+main :: IO ()
+main = double 5 (\a -> addOne a (\b -> print b))
+```
+
+
+
+
+
+
+
+
+
+
+

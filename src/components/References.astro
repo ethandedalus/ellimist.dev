@@ -1,0 +1,107 @@
+---
+// A numbered bibliography. Entries are passed as data, not markup, so every
+// citation on the site is punctuated the same way regardless of who wrote it.
+//
+//   import References from "~/components/References.astro";
+//
+//   <References entries={[
+//     {
+//       id: "keen2016",
+//       authors: ["Aaron Keen"],
+//       title: "Continuation Passing Style",
+//       container: "CSC 430: Programming Languages",
+//       publisher: "California Polytechnic State University",
+//       year: 2016,
+//       url: "https://users.csc.calpoly.edu/~akeen/courses/csc430/handouts/references/cps.pdf",
+//     },
+//   ]} />
+//
+// Each entry gets an anchor (`#ref-keen2016`). `<Cite entries={...}
+// id="keen2016" />` is the inline marker that links into it; pass both
+// components the same array and the numbering can't drift.
+//
+// Write the `## References` heading in the MDX above the component. A
+// heading rendered from here would be invisible to the table of contents,
+// which only sees markdown headings.
+
+import type { Reference } from "~/lib/types";
+
+interface Props {
+  entries: Reference[];
+}
+
+const { entries } = Astro.props;
+
+const authorList = new Intl.ListFormat("en", {
+  style: "long",
+  type: "conjunction",
+});
+
+// Sentences are terminated here rather than in the field values, so an entry
+// never ends up with `Style..` or a stray comma when a field is missing.
+const terminate = (text: string) => (/[.?!]$/.test(text.trim()) ? "" : ".");
+
+const formatted = entries.map((entry) => {
+  const href =
+    entry.url ?? (entry.doi ? `https://doi.org/${entry.doi}` : undefined);
+  const source = [entry.publisher, entry.year].filter(Boolean).join(", ");
+
+  return {
+    entry,
+    href,
+    authors: entry.authors?.length
+      ? authorList.format(entry.authors)
+      : undefined,
+    source,
+    // Plain-text twin of the italic/publisher/year run, used only to decide
+    // whether that segment already ends in punctuation.
+    sourceText: [entry.container, source].filter(Boolean).join(", "),
+  };
+});
+---
+
+<ol class="references-list">
+  {
+    formatted.map(({ entry, href, authors, source, sourceText }) => (
+      <li id={`ref-${entry.id}`}>
+        {authors && (
+          <>
+            {authors}
+            {terminate(authors)}{" "}
+          </>
+        )}
+        {href ? (
+          <a href={href} rel="noreferrer">
+            {entry.title}
+          </a>
+        ) : (
+          entry.title
+        )}
+        {terminate(entry.title)}
+        {sourceText && (
+          <>
+            {" "}
+            {entry.container && <em>{entry.container}</em>}
+            {entry.container && source && ", "}
+            {source}
+            {terminate(sourceText)}
+          </>
+        )}
+        {entry.note && (
+          <>
+            {" "}
+            {entry.note}
+            {terminate(entry.note)}
+          </>
+        )}
+        {entry.accessed && (
+          <>
+            {" "}
+            Accessed {entry.accessed}
+            {terminate(entry.accessed)}
+          </>
+        )}
+      </li>
+    ))
+  }
+</ol>

@@ -740,16 +740,35 @@ a.chip-series:hover {
 	display: none;
 }
 
+/* Optical nudge: box-centred, the label reads a touch high against the marker.
+   A transform so it shifts without disturbing the summary's line box. */
+.prose .collapse-block > summary > span {
+	transform: translateY(1px);
+}
+
 .collapse-marker {
 	flex: none;
 	width: 1.125rem;
 	height: 1.125rem;
 	color: var(--color-muted-foreground);
+}
+
+/* Plus collapsing to minus. `view-box` puts the origin at the centre of the
+   24-unit grid; `fill-box` would resolve against a zero-width bbox. */
+.collapse-marker-bar {
+	transform-box: view-box;
+	transform-origin: center;
 	transition: transform 0.15s ease;
 }
 
-.prose .collapse-block[open] > summary .collapse-marker {
-	transform: rotate(90deg);
+.prose .collapse-block[open] > summary .collapse-marker-bar {
+	transform: scaleY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.collapse-marker-bar {
+		transition: none;
+	}
 }
 
 .prose .collapse-block > summary:hover .collapse-marker {
@@ -808,6 +827,201 @@ a.chip-series:hover {
 	.prose .collapse-block > .collapse-body {
 		display: block !important;
 	}
+
+}
+
+/* ---------------------------------------------------------------------------
+   Examples
+   Markup comes from Example.astro.
+   ------------------------------------------------------------------------- */
+
+/* Per-article, so every post starts again at Example 1. */
+.prose {
+	counter-reset: example;
+}
+
+.prose .example {
+	counter-increment: example;
+	margin-block: 1.5rem;
+	padding: 0.875rem 1.25rem 1rem;
+	border-inline-start: 2px solid var(--color-primary);
+	border-radius: var(--radius-sm);
+	background-color: var(--color-card);
+}
+
+/* Same treatment as the POST/NOTE chips, a size up — this one is a heading in
+   its own right, not a tag. Empty unless `label` was passed, in which case the
+   author's text stands in for the generated number. */
+.prose .example-label {
+	margin: 0;
+	color: var(--color-primary);
+	font-family: var(--font-mono);
+	font-size: 0.75rem;
+	font-weight: 600;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+}
+
+.prose .example-label:empty::before {
+	content: 'Example ' counter(example);
+}
+
+.prose .example-title {
+	margin: 0.25rem 0 0;
+	font-family: var(--font-sans);
+	font-size: 1.125rem;
+	font-weight: 600;
+	line-height: 1.4;
+}
+
+.prose .example-body > :first-child {
+	margin-block-start: 0.75rem;
+}
+
+.prose .example-body > :last-child {
+	margin-block-end: 0;
+}
+
+/* The solution is a `Collapse`; a rule separates it from the problem. */
+.prose .example > .collapse-block {
+	margin-block: 1rem 0;
+	padding-block-start: 0.75rem;
+	border-top: 1px solid var(--color-border);
+}
+
+/* ---------------------------------------------------------------------------
+   References
+   Markup comes from References.astro.
+   ------------------------------------------------------------------------- */
+
+/* `outside` markers give the hanging indent a bibliography wants: the number
+   sits in the gutter and wrapped lines align under the entry, not under it. */
+.prose .references-list {
+	margin-block: 0 1.5rem;
+	padding-inline-start: 1.75rem;
+	list-style: decimal outside;
+}
+
+.prose .references-list > li {
+	margin-block: 0.5rem;
+	padding-inline-start: 0.25rem;
+	font-size: 0.9375rem;
+	line-height: 1.6;
+	text-wrap: pretty;
+	/* Clears the sticky header, matching the rule for anchored headings. */
+	scroll-margin-top: calc(var(--header-height) + 1rem);
+}
+
+.prose .references-list > li::marker {
+	color: var(--color-muted-foreground);
+	font-family: var(--font-mono);
+	font-size: 0.8125rem;
+}
+
+.prose .references-list > li > a {
+	color: inherit;
+	text-decoration: underline;
+	text-underline-offset: 2px;
+	text-decoration-color: var(--color-border);
+	transition: text-decoration-color 0.15s;
+}
+
+.prose .references-list > li > a:hover {
+	text-decoration-color: currentColor;
+}
+
+/* Inline citation markers. Mono and slightly small, so `[1]` reads as
+   apparatus rather than as part of the sentence. */
+.prose .cite {
+	white-space: nowrap;
+	color: var(--color-muted-foreground);
+	font-family: var(--font-mono);
+	font-size: 0.8125em;
+}
+
+.prose .cite a {
+	color: inherit;
+	text-decoration: none;
+	transition: color 0.15s;
+}
+
+.prose .cite a:hover {
+	color: var(--color-primary);
+}
+
+/* Marks the entry an inline citation just jumped to. */
+.prose .references-list > li:target {
+	background-color: color-mix(in oklab, var(--color-primary) 10%, transparent);
+	box-shadow: 0 0 0 0.375rem
+		color-mix(in oklab, var(--color-primary) 10%, transparent);
+	border-radius: var(--radius-sm);
+}
+
+/* ---------------------------------------------------------------------------
+   Images
+   Markup comes from SimpleImage.astro.
+   ------------------------------------------------------------------------- */
+
+/* `fit-content` rather than a full-width block: it keeps the caption tucked
+   under the image instead of spanning the column, and centres the pair. */
+.prose .simple-image {
+	width: fit-content;
+	max-width: 100%;
+	margin-block: 1.5rem;
+	margin-inline: auto;
+}
+
+.prose .simple-image img {
+	display: block;
+	max-width: 100%;
+	height: auto;
+	margin: 0;
+	border-radius: var(--radius-md);
+}
+
+/* Matches the caption styling used under code blocks and diagrams. */
+.prose .simple-image-caption {
+	margin-block-start: 0.6rem;
+	padding-inline-start: 0.75rem;
+	border-inline-start: 2px solid var(--color-border);
+	color: var(--color-muted-foreground);
+	font-family: var(--font-sans);
+	font-size: 0.8125rem;
+	line-height: 1.55;
+	text-wrap: pretty;
+}
+
+/* A slotted caption arrives from MDX as markdown, so it may be wrapped. */
+.prose .simple-image-caption > :first-child {
+	margin-block-start: 0;
+}
+
+.prose .simple-image-caption > :last-child {
+	margin-block-end: 0;
+}
+
+.prose .simple-image-caption code {
+	color: var(--color-foreground);
+	font-family: var(--font-mono);
+	font-size: 0.925em;
+}
+
+.prose .simple-image-caption a {
+	color: inherit;
+	text-decoration: underline;
+	text-underline-offset: 2px;
+}
+
+/* `border` opts into the frame. */
+.prose .simple-image[data-border] {
+	padding: 1rem;
+	border: 1px solid var(--color-border);
+	border-radius: var(--radius-md);
+	background-color: var(--color-card);
+}
+
+.prose .simple-image[data-border] img {
+	border-radius: var(--radius-sm);
 }
 
 /* ---------------------------------------------------------------------------

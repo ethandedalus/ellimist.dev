@@ -1,0 +1,50 @@
+---
+// A worked example, set off from the prose the way a textbook sets one off.
+// Numbered automatically in document order, with an optional solution that
+// stays hidden until the reader asks for it.
+//
+//   import Example from "~/components/Example.astro";
+//
+//   <Example title="CPS-converting a binary operator">
+//     Rewrite `3 + 2 * -7` so that every call is a tail call.
+//
+//     <div slot="answer">
+//       ...
+//     </div>
+//   </Example>
+//
+// The solution is a `<Collapse>`, so it gets the same marker and open/close
+// animation as one written by hand. Omit the `answer` slot and no disclosure
+// is rendered at all.
+//
+// `label` replaces the automatic "Example N" for a book-style scheme like
+// "Example 4.2"; the counter still advances, so the two can be mixed.
+
+import Collapse from "~/components/Collapse.astro";
+
+interface Props {
+  title?: string;
+  label?: string;
+  answerLabel?: string;
+}
+
+const { title, label, answerLabel = "Solution" } = Astro.props;
+
+const hasAnswer = Astro.slots.has("answer");
+---
+
+<div class="example">
+  {/* Left empty when unlabelled: CSS fills it from the example counter. */}
+  <p class="example-label">{label}</p>
+  {title && <p class="example-title">{title}</p>}
+  <div class="example-body">
+    <slot />
+  </div>
+  {
+    hasAnswer && (
+      <Collapse summary={answerLabel}>
+        <slot name="answer" />
+      </Collapse>
+    )
+  }
+</div>

@@ -39,6 +39,31 @@ Different events trigger state transitions. A preliminary set of events we can u
 - `P2QuorumAccepted`: This event triggers a state transition `Accepting` → `Learned`.
 - `P2NoQuorumAccepted`: This event triggers a state transition `Accepting` → `Preparing`. It has the side effects of fast forwarding the instance's ballot, if at least one response was received (incrementing it otherwise), and also of increasing the wait time.
 
+```diagram title="A State Machine for a Single Synod"
+stateDiagram-v2
+    [*] --> Idle
+
+    Idle --> Preparing : returns
+
+    Preparing --> Dead : raises
+    Preparing --> CollectingPromises : returns
+
+    CollectingPromises --> Dead : raises
+    CollectingPromises --> Accepting : P1Quorum
+    CollectingPromises --> Idle : P1NoQuorum
+    CollectingPromises --> Idle : P1Timeout
+
+    Accepting --> Dead : raises
+    Accepting --> CollectingAccepts : returns
+
+    CollectingAccepts --> Dead : raises
+    CollectingAccepts --> Learned : P2Quorum
+    CollectingAccepts --> Idle : P2NoQuorum
+    CollectingAccepts --> Idle : P2Timeout
+
+    Learned --> [*]
+    Dead --> [*]
+```
 
 
 

@@ -1,0 +1,59 @@
+---
+// An inline citation marker: `[1]`, linking to the matching entry in the
+// `<References>` list at the foot of the post.
+//
+//   <Cite entries={refs} id="keen2016" />          →  [1]
+//   <Cite entries={refs} id={["keen2016", "sitaram93"]} />  →  [1, 4]
+//
+// The number is the entry's position in the same `entries` array
+// `<References>` is given, so the two can't drift. Both components take the
+// array explicitly rather than sharing hidden state, since a citation renders
+// before the reference list it points into.
+//
+// Defining the array once at the top of the MDX file and aliasing away the
+// repetition keeps the prose readable:
+//
+//   export const refs = [{ id: "keen2016", ... }];
+//   export const C = (props) => <Cite entries={refs} {...props} />;
+//
+//   ...continuations were first described this way <C id="keen2016" />.
+//
+//   <References entries={refs} />
+//
+// An id with no matching entry fails the build rather than rendering a
+// dangling marker.
+
+import type { Reference } from "~/lib/types";
+
+interface Props {
+  entries: Reference[];
+  id: string | string[];
+}
+
+const { entries, id } = Astro.props;
+
+const cited = (Array.isArray(id) ? id : [id]).map((wanted) => {
+  const index = entries.findIndex((entry) => entry.id === wanted);
+  if (index === -1) {
+    throw new Error(
+      `<Cite>: no reference with id "${wanted}". Known ids: ${entries
+        .map((entry) => entry.id)
+        .join(", ")}`,
+    );
+  }
+  return { id: wanted, number: index + 1, title: entries[index].title };
+});
+---
+
+<span class="cite"
+  >[{
+    cited.map((ref, i) => (
+      <>
+        {i > 0 && ", "}
+        <a href={`#ref-${ref.id}`} title={ref.title}>
+          {ref.number}
+        </a>
+      </>
+    ))
+  }]</span
+>

@@ -1,0 +1,58 @@
+---
+// A single centred image with an optional caption and frame. Deliberately
+// minimal — anything needing side-by-side layout, zooming, or a lightbox
+// belongs in its own component rather than as flags on this one.
+//
+//   import SimpleImage from "~/components/SimpleImage.astro";
+//   import plot from "~/assets/images/plot.png";
+//
+//   <SimpleImage src={plot} alt="..." caption="..." border />
+//
+// An ESM-imported image goes through `astro:assets` and gets optimized and
+// given intrinsic dimensions. A string path (`public/`, or a remote URL) is
+// emitted as a plain `<img>`: no optimization, and no reserved space unless
+// `width` and `height` are supplied.
+//
+// `caption` is plain text. For a caption carrying markup — a link, `code` —
+// pass it as children instead, where MDX parses it as markdown.
+
+import { Image } from "astro:assets";
+import type { ImageMetadata } from "astro";
+
+interface Props {
+  src: ImageMetadata | string;
+  alt: string;
+  caption?: string;
+  border?: boolean;
+  width?: number;
+  height?: number;
+}
+
+const { src, alt, caption, border = false, width, height } = Astro.props;
+
+const hasSlottedCaption = Astro.slots.has("default");
+---
+
+<figure class="simple-image" data-border={border || undefined}>
+  {
+    typeof src === "string" ? (
+      <img
+        src={src}
+        alt={alt}
+        width={width}
+        height={height}
+        loading="lazy"
+        decoding="async"
+      />
+    ) : (
+      <Image src={src} alt={alt} width={width} height={height} />
+    )
+  }
+  {
+    (hasSlottedCaption || caption) && (
+      <figcaption class="simple-image-caption">
+        {hasSlottedCaption ? <slot /> : caption}
+      </figcaption>
+    )
+  }
+</figure>

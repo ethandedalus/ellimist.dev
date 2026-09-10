@@ -1,0 +1,227 @@
+---
+title: "How Continuations Work" 
+description: "Demystifying how continuations work at a low level"
+pubDate: "September 8, 2026"
+tags:
+  - haskell
+  - racket
+  - functional-programming
+draft: false
+series: "Continuations"
+seriesPart: 1
+---
+
+import Example from "~/components/Example.astro"
+
+Today I want to talk about continuations. Continuations are rather difficult to understand from just a first pass, and most of the literature around them is difficult to navigate, very much in a "to understand continuations, you must first understand continuations" kind of way, so today I want to take a crack at elucidating them in a way that makes sense, by defining them at a very low level.
+
+## "The Rest of the Program"
+
+The code listing below contains a C program in the first tab and an assembly program in the second tab. The assembly program is the C program compiled to Intel x86_64 assembly. Assembly knowledge is helpful, but not required, to understand what follows. 
+
+As you read each line of the code listing, I want you to consider what "the rest of the program" means at the point you're at. 
+
+```c title="main.c" group="fig1.1"
+#include <stdio.h>
+
+int sum(const int *a, int n) {
+    int total = 0;
+    for (int i = 0; i < n; i++) {
+        total += a[i];
+    }
+    return total;
+}
+
+int main(void) {
+    int a[] = {1, 2, 3, 4, 5};
+    printf("%d\n", sum(a, 5));
+    return 0;
+}
+```
+
+```asm title="main.s" group="fig1.1" icon="binary"
+"sum":
+  push rbp
+  mov rbp, rsp
+  mov QWORD PTR [rbp-24], rdi
+  mov DWORD PTR [rbp-28], esi
+  mov DWORD PTR [rbp-4], 0
+  mov DWORD PTR [rbp-8], 0
+  jmp .L2
+.L3:
+  mov eax, DWORD PTR [rbp-8]
+  cdqe
+  lea rdx, [0+rax*4]
+  mov rax, QWORD PTR [rbp-24]
+  add rax, rdx
+  mov eax, DWORD PTR [rax]
+  add DWORD PTR [rbp-4], eax
+  add DWORD PTR [rbp-8], 1
+.L2:
+  mov eax, DWORD PTR [rbp-8]
+  cmp eax, DWORD PTR [rbp-28]
+  jl .L3
+  mov eax, DWORD PTR [rbp-4]
+  pop rbp
+  ret
+.LC0:
+  .string "%d\n"
+"main":
+  push rbp
+  mov rbp, rsp
+  sub rsp, 32
+  mov DWORD PTR [rbp-32], 1
+  mov DWORD PTR [rbp-28], 2
+  mov DWORD PTR [rbp-24], 3
+  mov DWORD PTR [rbp-20], 4
+  mov DWORD PTR [rbp-16], 5
+  lea rax, [rbp-32]
+  mov esi, 5
+  mov rdi, rax
+  call "sum"
+  mov esi, eax
+  mov edi, OFFSET FLAT:.LC0
+  mov eax, 0
+  call "printf"
+  mov eax, 0
+  leave
+  ret
+```
+
+After the array `a` has been declared, for instance, the rest of the program is "print the sum of `a` and return 0". Another instance is that after the first iteration of the loop on line 7, the rest of the program is "run four more iterations of the loop, return the total, print the total, and return 0".
+
+<Example>
+  Consider line 13. How would you describe _the rest of the program_ right before `sum(a, 5)` is called? Try it in words, then try writing down the assembly that's left to run.
+
+  ```c
+  // --- snip ----
+    printf("%d\n", sum(a, 5));
+  //               ^ here
+  // --- snip ---
+  ```
+
+  Take a minute to think about it. The answer is listed below.
+
+  <div slot="answer">
+    In words, the rest of the program is "run sum, then take that value and run printf with the sum as its second argument. Then, return 0.".
+
+    Note that the rest of the program depends on the value of `sum(a, 5)`, so we could say that the rest of the program is _a function of the value returned by the call to sum_. You could represent this with the following notation, using λ to denote a function.
+
+    $$
+    \lambda v.\ \left\{ \begin{array}{l}
+    \texttt{printf("\%d\textbackslash n", v);} \\
+    \texttt{return 0;}
+    \end{array} \right\}
+    $$
+
+    What does this look like as assembly? 
+
+    ```asm
+    mov esi, eax
+    mov edi, OFFSET FLAT:.LC0
+    mov eax, 0
+    call "printf"
+    mov eax, 0
+    leave
+    ret
+    ```
+
+    Since this is Intel assembly, the return value of `sum` is stored in `eax`. That's the `v`. 
+  </div>
+</Example>
+
+The "rest of a program" as a concept should be starting to solidify, especially when it's given in assembly. Try another one.
+
+<Example>
+  Consider line 6. How would you describe the rest of the program right after the `total += a[i]` assignment happens, in the _fourth_ iteration of the loop? 
+
+  ```c
+  // ---- snip ----
+    for (int i = 0; i < n; i++) {
+        total += a[i];
+    // here
+    }
+  // ---- snip ----
+  ```
+
+  Again, try it yourself before checking the solution.
+
+  <div slot="answer">
+    In words, the rest of the program is "go back to the loop condition, check if we need to execute the body again, execute the body again, go back to the loop condition, check if we need to execute the body again, return the total, print the total, and return 0."
+
+    Thinking of it this way, the remainder of the program is function that takes the result of `total += a[i]` and executes the remaining iterations of the loop, returns the total, prints the result, and terminates the program. We can write this out with the same notation as in the previous example as
+
+    $$ 
+    \lambda\_.\ \left\{ \begin{array}{l}
+    \text{execute the last iteration and get the total value} \\
+    \text{print the value} \\
+    \text{return } 0
+    \end{array} \right\} 
+    $$
+
+    Note that the lambda takes an argument (the result of the assignment, which actually does return a value in C) and ignores it. The lambda representing the rest of the program doesn't always have to take a value, and even if it does take a value, it is not obligated to use it.
+
+    As assembly, the rest of the program would be
+
+    ```asm
+    ; go back the loop head
+      mov eax, DWORD PTR [rbp-8] ; i = 4
+      cmp eax, DWORD PTR [rbp-28] ; 4 < 5
+
+    ; execute the body one more time
+    .L3:
+      mov eax, DWORD PTR [rbp-8]
+      cdqe
+      lea rdx, [0+rax*4]
+      mov rax, QWORD PTR [rbp-24]
+      add rax, rdx
+      mov eax, DWORD PTR [rax]
+      add DWORD PTR [rbp-4], eax
+      add DWORD PTR [rbp-8], 1
+
+    ; go back to the loop head
+      mov eax, DWORD PTR [rbp-8]
+      cmp eax, DWORD PTR [rbp-28]
+      jl .L3
+
+    ; return the total
+      mov eax, DWORD PTR [rbp-4]
+      pop rbp
+      ret
+
+    ; execute the remainder of main
+      mov esi, eax
+      mov edi, OFFSET FLAT:.LC0
+      mov eax, 0
+      call "printf"
+      mov eax, 0
+      leave
+      ret
+    ```
+  </div>
+</Example>
+
+
+There is one more piece we should consider though. 
+
+Imagine we somehow are able to separate the part of the program that _has run_ from _the rest of the program_, i.e. we have executed the first _X_ assembly instructions and have _Y_ more instructions to execute. If we could separate the remaining Y instructions and store them somewhere in a data structure, we could feasibly modify them, run them more than once or not at all, substitute an entirely different set of instructions, or run them at a later time. All we would need is to be able to reproduce the program's _live environment_, i.e. any registers or stack data that the following _Y_ instructions access. For example, in our second example, the variable `total` is something the rest of the program relies on, so even if we had access to the rest of the program instructions, we'd need the program state of all data that the rest of the program relies on.
+
+Turns out, this is not that difficult to do. Handwaving away the actual implementation, let's say we can replicate the program state after the first _X_ instructions and before the next _Y_ instructions and store it in a _snapshot_. Then the snapshot, packaged together with a function that takes the result _a_ of the first _X_ instructions and runs the remaining _Y_ instructions providing it with _a_, is the _continuation_ of the program after the first _X_ instructions have executed. In a low level language this is close to what happens. In a higher level language, the function and the environment can naturally be packaged together as a closure.
+
+## Continuation Passing Style
+
+We've established that a continuation is a function representing the rest of the program packaged together with the live environment the rest of the program needs to be accessible in order to run. Going forward, we will be considering implementations where the environment and function are implicitly packaged together, e.g. closures. The rest of the program takes a value (the result of the previous part of the program that was run) and returns a value (the end result of the program). Therefore, we can represent a continuation as a function `a -> r` where **a** and **r** are type variables.
+
+Any function you might want to branch the program's outcome on should take an explicit continuation as a parameter. This will allow its behavior to be changed in a number of ways that isn't really possible or practical in direct style. Some of these behaviors include (as we mentioned above)
+
+- Substituting the function's continuation with something different (required for exceptions)
+- Running a function's continuation multiple times (required for generators)
+- Storing a function's continuation and invoking it laters (required for green threads)
+
+A direct style function taking an input and producing an output has the signature `a -> b` where `a` and `b` are type variables. A function that takes its continuation as a parameter has the type signature `a -> (b -> r) -> r`, where the second parameter, `b -> r` is the continuation. The function takes an `a` does some work, produces a `b` and then invokes its continuation on that `b`, which ultimately produces an `r` (also a type variable). Functions written the second way are said to be written in _continuation passing style_.
+
+Notice here how the function described above has every capability to not run the specific continuation it has been given, take another alternative continuation and run that one, or run a continuation multiple times. This provides us with a great deal of power and flexibility.
+
+In the following posts we will showcase how to actually implement exceptions, generators, and language level green threads with continuations. Stay tuned!
+
+Thank you for reading.
