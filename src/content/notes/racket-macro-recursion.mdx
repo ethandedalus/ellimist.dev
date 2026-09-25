@@ -33,9 +33,9 @@ If you think about it, you can rewrite this whole expression without the `let*`.
 ;; => 24
 ```
 
-Racket provides syntax-rewriting capabilities, so we can implement the `let*` special form using these capabiliites as follows.
+Racket provides compile time syntax-rewriting capabilities, so we can implement the `let*` special form using these capabiliites as follows.
 
-```racket title="main.rkt"
+```racket
 #lang racket
 
 (define-syntax my/let*
