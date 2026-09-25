@@ -1,0 +1,71 @@
+---
+title: "Recursive Macros in Racket"
+description: "How to create a let* special form with a macro"
+pubDate: "September 15, 2026"
+tags:
+  - racket
+  - lisp
+---
+
+Consider the `let*` special form in Racket. The only difference compared to `let` is that later bindings can refer to earlier ones.
+
+```racket
+#lang racket
+
+(let*
+  ([x 3]
+   [y (+ x 5)])
+  (* x y))
+
+;; => 24
+---
+`x` can be referenced in the expression `y` is assigned to
+---
+```
+
+If you think about it, you can rewrite this whole expression without the `let*`. Consider the nested lambdas:
+
+```racket
+#lang racket
+
+((lambda (x) ((lambda (y) (* x y)) (+ x 5))) 3)
+
+;; => 24
+```
+
+Racket provides syntax-rewriting capabilities, so we can implement the `let*` special form using these capabiliites as follows.
+
+```racket title="main.rkt"
+#lang racket
+
+(define-syntax my/let*
+  (syntax-rules ()
+    [(my/let* () body) body]
+    [(my/let* ([var val] rest ...) body) ((lambda (var) (my/let* (rest ...) body)) val)]))
+```
+
+We define two pattern match arms. We can match an empty binding list and a body, in which case we just return the body, or we can match more bindings, in which case we return a lambda that takes the first binding's name and invokes the lambda with the first binding's value. The body of the lambda recurses with the tail of the list and the body, unchanged. The `my/let*` macro can be used similarly to the way `let*` is. 
+
+```racket
+(my/let*
+  ([x 3]
+   [y (+ x 5)])
+  (* x y))
+```
+
+The recursion isn't special. Trace the execution. At first, there are two bindings, so we hit the second branch.
+
+```racket
+;; first (outer) call =>
+[(([x 3] rest ...) (* x y)) ((lambda (x) (my/let* (rest ...) (* x y))) 3)]
+;; second (inner) call =>
+[(([y (+ x 5)] rest ...) (* x y)) ((lambda (y) (my/let* (rest ...) (* x y))) (+ x 5))]
+;; third (base) call =>
+[(() (* x y)) (* x y)]
+;; second (inner) call =>
+[(([y (+ x 5)] rest ...) (* x y)) ((lambda (y) (* x y)) (+ x 5))]
+;; first (outer) call =>
+[(([x 3] rest ...) (* x y)) ((lambda (x) ((lambda (y) (* x y)) (+ x 5))) 3)]
+```
+
+so the whole thing expands to `((lambda (x) ((lambda (y) (* x y)) (+ x 5))) 3)`.

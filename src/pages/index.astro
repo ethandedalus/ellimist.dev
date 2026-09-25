@@ -126,30 +126,48 @@ const notes = (await getCollection("notes", isVisible))
       }
     </section>
   </div>
+
+  {
+    /*
+    Reveals already-rendered entries in batches. Framework-free — a hydrated
+    island here would mean shipping every entry twice, once as markup and
+    again as serialized props.
+
+    Not `is:inline`: an inline script is never re-executed after a view
+    transition, so arriving back at the homepage through the router (a nav
+    link, or the Back button) left the buttons with no listener. A bundled
+    script runs again on arrival, and the `astro:page-load` hook covers the
+    case where this page is reached from one that already ran it.
+  */
+  }
+  <script>
+    function setup() {
+      document
+        .querySelectorAll<HTMLButtonElement>("[data-see-more]")
+        .forEach((button) => {
+          if (button.dataset.bound !== undefined) return;
+          button.dataset.bound = "";
+
+          button.addEventListener("click", () => {
+            const list = document.getElementById(button.dataset.seeMore!);
+            if (!list) return;
+
+            const step = Number(button.dataset.step) || 5;
+            const hidden = Array.from(list.children).filter(
+              (li) => (li as HTMLElement).hidden,
+            );
+
+            hidden.slice(0, step).forEach((li) => {
+              (li as HTMLElement).hidden = false;
+            });
+
+            // Nothing left to reveal after this batch.
+            if (hidden.length <= step) button.hidden = true;
+          });
+        });
+    }
+
+    setup();
+    document.addEventListener("astro:page-load", setup);
+  </script>
 </BaseLayout>
-
-{
-  /*
-  Reveals already-rendered entries in batches. Inline and framework-free —
-  a hydrated island here would mean shipping every entry twice, once as
-  markup and again as serialized props.
-*/
-}
-<script is:inline>
-  document.querySelectorAll("[data-see-more]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const list = document.getElementById(button.dataset.seeMore);
-      if (!list) return;
-
-      const step = Number(button.dataset.step) || 5;
-      const hidden = Array.from(list.children).filter((li) => li.hidden);
-
-      hidden.slice(0, step).forEach((li) => {
-        li.hidden = false;
-      });
-
-      // Nothing left to reveal after this batch.
-      if (hidden.length <= step) button.hidden = true;
-    });
-  });
-</script>
